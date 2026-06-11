@@ -118,6 +118,19 @@ def parse_options_from_request(request) -> ProcessingOptions:
     )
 
 def options_to_dict(options: ProcessingOptions) -> dict:
+    crop_dict = {
+        'enabled': options.crop.enabled,
+        'x': options.crop.x,
+        'y': options.crop.y,
+        'width': options.crop.width,
+        'height': options.crop.height,
+        'scale': options.crop.scale,
+        'mode': options.crop.mode
+    }
+    if hasattr(options.crop, '_src_width') and options.crop._src_width:
+        crop_dict['_srcWidth'] = options.crop._src_width
+    if hasattr(options.crop, '_src_height') and options.crop._src_height:
+        crop_dict['_srcHeight'] = options.crop._src_height
     return {
         'corner_radius': options.corner_radius,
         'background_color': options.background_color,
@@ -131,15 +144,7 @@ def options_to_dict(options: ProcessingOptions) -> dict:
         'app_short_name': options.app_short_name,
         'theme_color': options.theme_color,
         'background_color_manifest': options.background_color_manifest,
-        'crop': {
-            'enabled': options.crop.enabled,
-            'x': options.crop.x,
-            'y': options.crop.y,
-            'width': options.crop.width,
-            'height': options.crop.height,
-            'scale': options.crop.scale,
-            'mode': options.crop.mode
-        }
+        'crop': crop_dict
     }
 
 def get_batch_results(batch_id):
@@ -770,7 +775,8 @@ def reuse_template(record_id):
     
     return jsonify({
         'success': True,
-        'template': options_dict
+        'template': options_dict,
+        'record_name': record.original_name
     })
 
 @main_bp.route('/download/filtered/<batch_id>', methods=['POST'])

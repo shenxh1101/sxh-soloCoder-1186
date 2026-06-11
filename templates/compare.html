@@ -144,8 +144,11 @@
                     </div>
 
                     <div class="reuse-wrap">
-                        <button class="reuse-btn" onclick="reuseOne('{{ rec.id }}')" style="width:100%;justify-content:center;">
+                        <button class="reuse-btn" onclick="reuseOne('{{ rec.id }}')" style="flex:1;justify-content:center;">
                             ♻️ 套用此配置并上传
+                        </button>
+                        <button class="recommend-btn" onclick="markRecommended('{{ rec.id }}', '{{ rec.original_name }}')" id="recBtn_{{ rec.id }}" title="标记为推荐版本，预览/下载页将优先使用此配置">
+                            ⭐ 推荐
                         </button>
                     </div>
                 </div>
@@ -164,12 +167,14 @@
 
     <script>
         function reuseOne(recordId) {
-            if (!confirm('将使用此任务的所有参数进入上传页面，继续吗？')) return;
             fetch('/api/reuse-template/' + recordId)
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        sessionStorage.setItem('reuseTemplate', JSON.stringify(data.template));
+                        const tpl = data.template;
+                        tpl._reusedFrom = recordId;
+                        tpl._reusedFromName = data.record_name || '';
+                        sessionStorage.setItem('reuseTemplate', JSON.stringify(tpl));
                         window.location.href = '/';
                     } else {
                         alert('获取参数失败: ' + (data.error || '未知错误'));
@@ -177,6 +182,35 @@
                 })
                 .catch(e => alert('错误: ' + e.message));
         }
+
+        function markRecommended(recordId, recordName) {
+            const rec = { id: recordId, name: recordName };
+            localStorage.setItem('recommended_record', JSON.stringify(rec));
+            document.querySelectorAll('.recommend-btn').forEach(b => {
+                b.classList.remove('active');
+                b.textContent = '⭐ 推荐';
+            });
+            const btn = document.getElementById('recBtn_' + recordId);
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = '✅ 已推荐';
+            }
+            alert('已将「' + recordName + '」标记为推荐版本！\n预览和下载页将优先使用此任务的文件名、主题色和下载预设。');
+        }
+
+        (function() {
+            const saved = localStorage.getItem('recommended_record');
+            if (saved) {
+                try {
+                    const rec = JSON.parse(saved);
+                    const btn = document.getElementById('recBtn_' + rec.id);
+                    if (btn) {
+                        btn.classList.add('active');
+                        btn.textContent = '✅ 已推荐';
+                    }
+                } catch(e) {}
+            }
+        })();
     </script>
 </body>
 </html>

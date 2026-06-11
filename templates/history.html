@@ -65,9 +65,15 @@
                 <div class="empty-icon">📭</div>
                 <h3>暂无历史记录</h3>
                 <p>上传图片生成图标后，记录会显示在这里</p>
-                <a href="{{ url_for('main.index') }}" class="btn-primary" style="display:inline-block;margin-top:20px;">
-                    立即生成
-                </a>
+                <div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                    <a href="{{ url_for('main.index') }}" class="btn-primary" style="display:inline-block;">
+                        立即生成
+                    </a>
+                    <a href="{{ url_for('main.index') }}" class="btn-secondary" style="display:inline-block;">
+                        ← 返回上传
+                    </a>
+                </div>
+                <div id="cacheStatsEmpty" style="margin-top:20px;font-size:12px;color:#94a3b8;"></div>
             </div>
             {% endif %}
         </div>
@@ -135,7 +141,9 @@
                 'shadow_color': '阴影颜色',
                 'custom_sizes': '自定义尺寸',
                 'custom_filenames': '自定义文件名',
-                'crop': '裁剪设置'
+                'crop': '裁剪设置',
+                '_reusedFrom': '复用来源',
+                '_reusedFromName': '复用来源任务'
             };
 
             let html = '';
@@ -178,6 +186,10 @@
                     } else {
                         displayVal = '未启用';
                     }
+                } else if (key === '_reusedFromName' && val) {
+                    displayVal = `<span class="reused-badge">♻️ 复用自: ${val}</span>`;
+                } else if (key === '_reusedFrom' && val) {
+                    return;
                 } else if (val === null || val === '') {
                     displayVal = '—';
                 } else if (typeof val === 'string' && val.startsWith('#')) {
@@ -198,14 +210,14 @@
         }
 
         function reuseTemplate(recordId) {
-            if (!confirm('将使用此任务的所有参数（尺寸、文件名、圆角、阴影、应用信息等）进入上传页面，继续吗？')) {
-                return;
-            }
             fetch('/api/reuse-template/' + recordId)
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        sessionStorage.setItem('reuseTemplate', JSON.stringify(data.template));
+                        const tpl = data.template;
+                        tpl._reusedFrom = recordId;
+                        tpl._reusedFromName = data.record_name || '';
+                        sessionStorage.setItem('reuseTemplate', JSON.stringify(tpl));
                         window.location.href = '/';
                     } else {
                         alert('获取参数失败: ' + (data.error || '未知错误'));
@@ -248,33 +260,36 @@
         }
 
         const compareModeToggle = document.getElementById('toggleCompareMode');
-        const compareChecks = document.querySelectorAll('.compare-check');
         const selectedCountEl = document.getElementById('selectedCount');
         const clearCompareBtn = document.getElementById('clearCompareBtn');
         const compareBtn = document.getElementById('compareBtn');
 
-        compareModeToggle.addEventListener('change', function () {
-            const isOn = this.checked;
-            compareChecks.forEach(cb => {
-                cb.style.display = isOn ? 'inline-block' : 'none';
-                if (!isOn) cb.checked = false;
+        if (compareModeToggle) {
+            compareModeToggle.addEventListener('change', function () {
+                const isOn = this.checked;
+                document.querySelectorAll('.compare-check').forEach(cb => {
+                    cb.style.display = isOn ? 'inline-block' : 'none';
+                    if (!isOn) cb.checked = false;
+                });
+                updateSelected();
             });
-            updateSelected();
-        });
+        }
 
         function updateSelected() {
             const count = document.querySelectorAll('.compare-check:checked').length;
-            selectedCountEl.textContent = `已选 ${count} 个`;
-            const isMode = compareModeToggle.checked;
-            clearCompareBtn.style.display = (isMode && count > 0) ? 'inline-flex' : 'none';
-            compareBtn.style.display = (isMode && count >= 2) ? 'inline-flex' : 'none';
-            compareBtn.classList.toggle('disabled', count < 2);
-            compareBtn.style.opacity = count < 2 ? '0.5' : '1';
-            compareBtn.style.pointerEvents = count < 2 ? 'none' : 'auto';
+            if (selectedCountEl) selectedCountEl.textContent = `已选 ${count} 个`;
+            const isMode = compareModeToggle && compareModeToggle.checked;
+            if (clearCompareBtn) clearCompareBtn.style.display = (isMode && count > 0) ? 'inline-flex' : 'none';
+            if (compareBtn) {
+                compareBtn.style.display = (isMode && count >= 2) ? 'inline-flex' : 'none';
+                compareBtn.classList.toggle('disabled', count < 2);
+                compareBtn.style.opacity = count < 2 ? '0.5' : '1';
+                compareBtn.style.pointerEvents = count < 2 ? 'none' : 'auto';
+            }
         }
 
         function clearCompareSelection() {
-            compareChecks.forEach(cb => cb.checked = false);
+            document.querySelectorAll('.compare-check').forEach(cb => cb.checked = false);
             updateSelected();
         }
 
@@ -287,6 +302,18 @@
             }
             window.location.href = '/compare?ids=' + encodeURIComponent(ids.join(','));
         }
+
+        (function loadCacheStats() {
+            fetch('/api/cache/stats')
+                .then(r => r.json())
+                .then(data => {
+                    const el = document.getElementById('cacheStatsEmpty');
+                    if (el && data.total_files !== undefined) {
+                        el.textContent = `缓存: ${data.total_files} 个任务, ${data.total_size_mb} MB`;
+                    }
+                })
+                .catch(() => {});
+        })();
     </script>
 </body>
 </html>

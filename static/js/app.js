@@ -134,6 +134,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         renderStandardSizes();
         renderCustomSizes();
+
+        if (tpl.crop && tpl.crop.enabled) {
+            sessionStorage.setItem('reuseCrop', JSON.stringify(tpl.crop));
+        }
     }
 
     function renderStandardSizes() {

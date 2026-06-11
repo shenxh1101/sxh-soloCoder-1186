@@ -17,6 +17,12 @@
             </div>
         </header>
 
+        <div id="recommendedBanner" class="recommended-banner" style="display:none;">
+            <span>⭐ 当前使用推荐版本配置</span>
+            <button onclick="applyRecommendedConfig()" class="btn-secondary" style="padding:4px 12px;font-size:11px;">应用推荐配置</button>
+            <button onclick="dismissRecommended()" class="btn-secondary" style="padding:4px 8px;font-size:11px;">✕</button>
+        </div>
+
         <div class="download-filter-section" id="downloadFilter">
             <h4>📦 自定义下载</h4>
             <div class="filter-groups">
@@ -75,6 +81,14 @@
                     <div class="preset-btns">
                         <button type="button" class="preset-btn save" onclick="saveCurrentAsPreset()">💾 保存当前</button>
                         <button type="button" class="preset-btn delete" onclick="deleteSelectedPreset()">🗑️ 删除</button>
+                    </div>
+                </div>
+                <div class="preset-row" style="margin-top:6px;">
+                    <label>团队分享:</label>
+                    <div class="preset-btns">
+                        <button type="button" class="preset-btn" onclick="exportPresets()">📤 导出 JSON</button>
+                        <button type="button" class="preset-btn" onclick="document.getElementById('importPresetFile').click()">📥 导入 JSON</button>
+                        <input type="file" id="importPresetFile" accept=".json" style="display:none;" onchange="importPresets(this)">
                     </div>
                 </div>
             </div>

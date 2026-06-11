@@ -43,7 +43,32 @@ document.addEventListener('DOMContentLoaded', function() {
         updateScaleDisplay();
         bindEvents();
         initBatchMode();
+        initFromReuseCrop();
         initCropFrame();
+    }
+
+    function initFromReuseCrop() {
+        const raw = sessionStorage.getItem('reuseCrop');
+        if (!raw) return;
+        try {
+            const crop = JSON.parse(raw);
+            sessionStorage.removeItem('reuseCrop');
+            if (!crop || !crop.enabled) return;
+            perImageCrops[0] = {
+                enabled: true,
+                x: crop.x || 0,
+                y: crop.y || 0,
+                width: crop.width || 0,
+                height: crop.height || 0,
+                scale: crop.scale || 1.0,
+                mode: crop.mode || 'cover',
+                userZoom: 1.0,
+                cropMode: crop.mode || 'cover',
+                _srcWidth: crop._srcWidth || imageWidth,
+                _srcHeight: crop._srcHeight || imageHeight,
+                _reusedCrop: true
+            };
+        } catch(e) {}
     }
 
     function initBatchMode() {
@@ -72,12 +97,16 @@ document.addEventListener('DOMContentLoaded', function() {
         box.innerHTML = '';
         imageList.forEach((img, idx) => {
             const t = document.createElement('div');
-            t.className = 'thumb' + (idx === currentImageIndex ? ' active' : '');
+            const crop = perImageCrops[idx];
+            let statusCls = '';
+            if (crop && crop._manuallyAdjusted) statusCls = ' thumb-adjusted';
+            else if (crop && crop._syncedFromFirst) statusCls = ' thumb-synced';
+            t.className = 'thumb' + (idx === currentImageIndex ? ' active' : '') + statusCls;
             t.innerHTML = `
                 <img src="/api/original-image/${uploadId}?index=${idx}" alt="${img.name}">
                 <span class="idx">${idx + 1}</span>
             `;
-            t.title = img.name;
+            t.title = img.name + (crop && crop._manuallyAdjusted ? ' (已微调)' : crop && crop._syncedFromFirst ? ' (已同步)' : '');
             t.addEventListener('click', () => switchToImage(idx));
             box.appendChild(t);
         });
@@ -85,7 +114,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function saveCurrentCrop() {
         const p = getCropParams();
-        perImageCrops[currentImageIndex] = {
+        const prev = perImageCrops[currentImageIndex];
+        const entry = {
             enabled: true,
             x: p.x,
             y: p.y,
@@ -94,8 +124,23 @@ document.addEventListener('DOMContentLoaded', function() {
             scale: p.scale,
             mode: p.mode,
             userZoom: userZoom,
-            cropMode: cropMode
+            cropMode: cropMode,
+            _srcWidth: imageWidth,
+            _srcHeight: imageHeight
         };
+        if (prev) {
+            const changed = prev.x !== entry.x || prev.y !== entry.y ||
+                prev.width !== entry.width || prev.height !== entry.height ||
+                prev.userZoom !== entry.userZoom || prev.cropMode !== entry.cropMode;
+            if (changed && prev._syncedFromFirst) {
+                entry._manuallyAdjusted = true;
+                delete entry._syncedFromFirst;
+            } else {
+                if (prev._manuallyAdjusted) entry._manuallyAdjusted = true;
+                if (prev._syncedFromFirst && !changed) entry._syncedFromFirst = true;
+            }
+        }
+        perImageCrops[currentImageIndex] = entry;
     }
 
     function loadCropForIndex(idx) {
@@ -104,8 +149,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (img) {
             imageWidth = img.width;
             imageHeight = img.height;
-            document.getElementById('currentImageName').textContent = img.name;
-            document.getElementById('currentImageSize').textContent = `${img.width} × ${img.height}`;
+            const nameEl = document.getElementById('currentImageName');
+            const sizeEl = document.getElementById('currentImageSize');
+            if (nameEl) nameEl.textContent = img.name;
+            if (sizeEl) sizeEl.textContent = `${img.width} × ${img.height}`;
         }
         originalImage.src = `/api/original-image/${uploadId}?index=${idx}`;
         originalImage.onload = () => {
@@ -123,16 +170,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 scaleSlider.value = 1;
                 updateScaleDisplay();
             }
-            initCropFrame();
+            computeDisplayScale();
+            originalImage.style.width = imageDisplayW + 'px';
+            originalImage.style.height = imageDisplayH + 'px';
+
             if (saved) {
-                const totalScale = (function(){
-                    const imgRect = originalImage.getBoundingClientRect();
-                    return (imgRect.width / imageWidth) * userZoom;
-                })();
-                cropFrame.style.left = (saved.x * totalScale) + 'px';
-                cropFrame.style.top = (saved.y * totalScale) + 'px';
-                cropFrame.style.width = (saved.width * totalScale) + 'px';
-                cropFrame.style.height = (saved.height * totalScale) + 'px';
+                const srcW = saved._srcWidth || imageWidth;
+                const srcH = saved._srcHeight || imageHeight;
+                const scaleX = imageWidth / srcW;
+                const scaleY = imageHeight / srcH;
+                const totalScale = displayScale * userZoom;
+                const adjX = saved.x * scaleX;
+                const adjY = saved.y * scaleY;
+                const adjW = saved.width * scaleX;
+                const adjH = saved.height * scaleY;
+                cropFrame.style.left = (adjX * totalScale) + 'px';
+                cropFrame.style.top = (adjY * totalScale) + 'px';
+                cropFrame.style.width = (adjW * totalScale) + 'px';
+                cropFrame.style.height = (adjH * totalScale) + 'px';
+                updateInputsFromFrame();
+            } else {
+                const minSize = Math.min(imageDisplayW, imageDisplayH) * 0.6;
+                const frameSize = minSize;
+                cropFrame.style.left = ((imageDisplayW - frameSize) / 2) + 'px';
+                cropFrame.style.top = ((imageDisplayH - frameSize) / 2) + 'px';
+                cropFrame.style.width = frameSize + 'px';
+                cropFrame.style.height = frameSize + 'px';
                 updateInputsFromFrame();
             }
             updatePreview();
@@ -146,7 +209,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function switchToImage(idx) {
-        if (idx === currentImageIndex) return;
+        if (idx < 0 || idx >= totalImages) return;
+        if (idx === currentImageIndex && perImageCrops[idx]) return;
         saveCurrentCrop();
         currentImageIndex = idx;
         document.getElementById('currentImageIndex').textContent = String(idx + 1);
@@ -159,7 +223,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function applyFirstToAll() {
         if (totalImages < 2) return;
-        if (!confirm('将把第 1 张图的裁剪位置、缩放和尺寸套用到所有 ' + totalImages + ' 张图，继续吗？')) return;
         saveCurrentCrop();
         const first = perImageCrops[0] || (function(){
             const p = getCropParams();
@@ -169,9 +232,15 @@ document.addEventListener('DOMContentLoaded', function() {
             };
         })();
         for (let i = 1; i < totalImages; i++) {
+            const existing = perImageCrops[i];
+            if (existing && existing._manuallyAdjusted) {
+                continue;
+            }
             perImageCrops[i] = Object.assign({}, first);
+            perImageCrops[i]._syncedFromFirst = true;
         }
-        alert('已套用到全部 ' + totalImages + ' 张图！');
+        renderThumbnails();
+        alert('已将第1张的裁剪、模式和美化参数同步到未手动调整的图片！已单独微调过的图片保持不变。');
     }
 
     function getAllCrops() {
@@ -207,20 +276,39 @@ document.addEventListener('DOMContentLoaded', function() {
         
         originalImage.style.width = imageDisplayW + 'px';
         originalImage.style.height = imageDisplayH + 'px';
+
+        const saved = perImageCrops[0];
+        if (saved && saved.enabled) {
+            const srcW = saved._srcWidth || imageWidth;
+            const srcH = saved._srcHeight || imageHeight;
+            const scaleX = imageWidth / srcW;
+            const scaleY = imageHeight / srcH;
+            const totalScale = displayScale * userZoom;
+            const adjW = Math.min(saved.width * scaleX, imageWidth);
+            const adjH = Math.min(saved.height * scaleY, imageHeight);
+            const adjX = Math.min(saved.x * scaleX, imageWidth - adjW);
+            const adjY = Math.min(saved.y * scaleY, imageHeight - adjH);
+            cropFrame.style.left = (adjX * totalScale) + 'px';
+            cropFrame.style.top = (adjY * totalScale) + 'px';
+            cropFrame.style.width = (adjW * totalScale) + 'px';
+            cropFrame.style.height = (adjH * totalScale) + 'px';
+            if (saved.cropMode && saved.cropMode !== cropMode) {
+                cropMode = saved.cropMode;
+                document.querySelectorAll('.mode-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.mode === cropMode);
+                });
+            }
+        } else {
+            const minSize = Math.min(imageDisplayW, imageDisplayH) * 0.6;
+            const frameSize = minSize;
+            cropFrame.style.left = ((imageDisplayW - frameSize) / 2) + 'px';
+            cropFrame.style.top = ((imageDisplayH - frameSize) / 2) + 'px';
+            cropFrame.style.width = frameSize + 'px';
+            cropFrame.style.height = frameSize + 'px';
+        }
         
-        const minSize = Math.min(imageDisplayW, imageDisplayH) * 0.6;
-        const frameSize = minSize;
-        
-        const x = (imageDisplayW - frameSize) / 2;
-        const y = (imageDisplayH - frameSize) / 2;
-        
-        cropFrame.style.left = x + 'px';
-        cropFrame.style.top = y + 'px';
-        cropFrame.style.width = frameSize + 'px';
-        cropFrame.style.height = frameSize + 'px';
-        
-        const realW = Math.round(frameSize / (displayScale * userZoom));
-        const realH = Math.round(frameSize / (displayScale * userZoom));
+        const realW = Math.max(1, Math.round((parseFloat(cropFrame.style.width) || 0) / (displayScale * userZoom)));
+        const realH = Math.max(1, Math.round((parseFloat(cropFrame.style.height) || 0) / (displayScale * userZoom)));
         cropWidthInput.value = realW;
         cropHeightInput.value = realH;
         

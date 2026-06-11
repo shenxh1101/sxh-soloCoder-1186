@@ -403,3 +403,21 @@
     box-shadow: 0 4px 14px rgba(245,158,11,0.4);
     transform: translateY(-1px);
 }
+
+.batch-thumbnails .thumb.thumb-synced {
+    border-color: #667eea;
+    background: #eef2ff;
+}
+
+.batch-thumbnails .thumb.thumb-synced .idx {
+    background: rgba(102,126,234,0.8);
+}
+
+.batch-thumbnails .thumb.thumb-adjusted {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+
+.batch-thumbnails .thumb.thumb-adjusted .idx {
+    background: rgba(245,158,11,0.8);
+}

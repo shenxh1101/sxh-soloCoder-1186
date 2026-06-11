@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     initPresets();
     initDownloadFilter();
+    initRecommendedBanner();
 
     if (typeof results !== 'undefined' && Array.isArray(results)) {
         results.forEach((result, index) => {
@@ -240,6 +241,136 @@ function deleteSelectedPreset() {
     } catch (e) {
         alert('删除失败: ' + e.message);
     }
+}
+
+function exportPresets() {
+    try {
+        const raw = localStorage.getItem('favicon_presets');
+        const userPresets = raw ? JSON.parse(raw) : [];
+        if (userPresets.length === 0) {
+            alert('没有自定义预设可以导出');
+            return;
+        }
+        const exportData = {
+            version: 1,
+            exported_at: new Date().toISOString(),
+            presets: userPresets
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'favicon_presets_' + new Date().toISOString().slice(0, 10) + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        alert('导出失败: ' + e.message);
+    }
+}
+
+function importPresets(fileInput) {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (!data.presets || !Array.isArray(data.presets)) {
+                alert('无效的预设文件格式');
+                return;
+            }
+            const incoming = data.presets;
+            const raw = localStorage.getItem('favicon_presets');
+            let existing = raw ? JSON.parse(raw) : [];
+            const existingNames = new Map(existing.map(p => [p.name, p]));
+            let imported = 0;
+            let skipped = 0;
+            let renamed = 0;
+
+            for (const preset of incoming) {
+                if (preset.builtin) continue;
+                const conflict = existingNames.get(preset.name);
+                if (conflict) {
+                    const choice = confirm(
+                        '发现同名预设「' + preset.name + '」\n\n' +
+                        '✓ 确定 = 保留导入的版本（覆盖本地）\n' +
+                        '✗ 取消 = 保留本地版本（跳过导入）'
+                    );
+                    if (choice) {
+                        const idx = existing.findIndex(p => p.name === preset.name);
+                        if (idx >= 0) existing[idx] = preset;
+                        else existing.push(preset);
+                        imported++;
+                    } else {
+                        skipped++;
+                    }
+                } else {
+                    preset.id = 'user_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+                    existing.push(preset);
+                    imported++;
+                }
+            }
+
+            saveUserPresets(existing);
+            initPresets();
+            alert('导入完成！成功 ' + imported + ' 个，跳过 ' + skipped + ' 个');
+        } catch (err) {
+            alert('导入失败: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+    fileInput.value = '';
+}
+
+function initRecommendedBanner() {
+    const banner = document.getElementById('recommendedBanner');
+    if (!banner) return;
+    const saved = localStorage.getItem('recommended_record');
+    if (saved) {
+        banner.style.display = 'flex';
+    }
+}
+
+function applyRecommendedConfig() {
+    const saved = localStorage.getItem('recommended_record');
+    if (!saved) return;
+    try {
+        const rec = JSON.parse(saved);
+        fetch('/api/reuse-template/' + rec.id)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('推荐配置加载失败');
+                    return;
+                }
+                const tpl = data.template;
+                const themeInput = document.querySelector('input[name="theme_color"]');
+                if (tpl.theme_color && themeInput) themeInput.value = tpl.theme_color;
+                if (tpl.custom_filenames) {
+                    const fnSet = new Set(Object.values(tpl.custom_filenames));
+                    const boxes = document.querySelectorAll('#downloadFilter input[type="checkbox"][data-filename]');
+                    boxes.forEach(cb => {
+                        cb.checked = fnSet.has(cb.dataset.filename) || cb.checked;
+                    });
+                }
+                if (tpl.app_name) {
+                    const zipInput = document.getElementById('zipName');
+                    if (zipInput) {
+                        const safeName = tpl.app_name.replace(/[^a-zA-Z0-9-_]/g, '') || 'icons';
+                        zipInput.value = safeName + '_icons.zip';
+                    }
+                }
+                alert('已应用推荐版本「' + (rec.name || '') + '」的配置！');
+            })
+            .catch(e => alert('加载失败: ' + e.message));
+    } catch(e) {}
+}
+
+function dismissRecommended() {
+    const banner = document.getElementById('recommendedBanner');
+    if (banner) banner.style.display = 'none';
 }
 
 function initDownloadFilter() {
