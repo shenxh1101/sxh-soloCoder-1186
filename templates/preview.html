@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图标预览 - Favicon生成器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎨 图标预览</h1>
+            <p class="subtitle">预览生成的图标在不同设备上的效果</p>
+            <div class="header-actions">
+                <a href="{{ url_for('main.index') }}" class="btn-secondary">← 返回上传</a>
+                <a href="{{ url_for('main.download', batch_id=batch_id) }}" class="btn-primary">📦 下载全部 ZIP</a>
+            </div>
+        </header>
+
+        {% if is_batch %}
+        <div class="batch-tabs">
+            {% for result in results %}
+            {% if not result.error %}
+            <button class="tab-btn {% if loop.first %}active{% endif %}" data-tab="{{ result.original_name }}">
+                {{ result.original_name }}
+                {% if result.cached %}
+                <span class="cached-badge">缓存</span>
+                {% endif %}
+            </button>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% for result in results %}
+        {% if result.error %}
+        <div class="error-card">
+            <h3>❌ {{ result.original_name }}</h3>
+            <p>错误: {{ result.error }}</p>
+        </div>
+        {% else %}
+        <div class="preview-tab {% if is_batch %}tab-content{% endif %} {% if loop.first and is_batch %}active{% endif %}" data-content="{{ result.original_name }}">
+            <div class="preview-header">
+                <h2>{{ result.original_name }}</h2>
+                {% if result.cached %}
+                <span class="cached-badge">从缓存加载</span>
+                {% endif %}
+                {% if is_batch %}
+                <a href="{{ url_for('main.download_single', batch_id=batch_id, original_name=result.original_name) }}" class="btn-secondary">
+                    下载此图标集
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="preview-sections">
+                <div class="preview-section">
+                    <h3>📱 设备模拟预览</h3>
+                    <div class="device-mockups">
+                        <div class="mockup browser-mockup">
+                            <div class="mockup-title">浏览器标签页</div>
+                            <div class="browser-frame">
+                                <div class="browser-tabs">
+                                    <div class="browser-tab active">
+                                        <div class="tab-favicon">
+                                            <img src="{{ url_for('main.preview_file', batch_id=batch_id, original_name=result.original_name, filename=result.files['favicon'].filename) }}" alt="favicon">
+                                        </div>
+                                        <span class="tab-title">My Website</span>
+                                    </div>
+                                </div>
+                                <div class="browser-address-bar">
+                                    <span class="lock-icon">🔒</span>
+                                    <span class="url">https://example.com</span>
+                                </div>
+                                <div class="browser-content">
+                                    <div class="browser-favicon-display">
+                                        <img src="{{ url_for('main.preview_file', batch_id=batch_id, original_name=result.original_name, filename=result.files['favicon'].filename) }}" alt="favicon large">
+                                        <p>favicon.ico</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mockup phone-mockup">
+                            <div class="mockup-title">iOS 主屏</div>
+                            <div class="phone-frame">
+                                <div class="phone-notch"></div>
+                                <div class="phone-screen">
+                                    <div class="phone-status-bar">
+                                        <span>9:41</span>
+                                        <span>📶 🔋</span>
+                                    </div>
+                                    <div class="app-icons-grid">
+                                        <div class="app-icon-wrapper">
+                                            <div class="app-icon">
+                                                <img src="{{ url_for('main.preview_file', batch_id=batch_id, original_name=result.original_name, filename=result.files['apple-touch-icon-180x180'].filename) }}" alt="iOS icon">
+                                            </div>
+                                            <span class="app-name">{{ result.original_name.split('.')[0][:10] }}</span>
+                                        </div>
+                                        <div class="app-icon-wrapper">
+                                            <div class="app-icon placeholder"></div>
+                                            <span class="app-name">Messages</span>
+                                        </div>
+                                        <div class="app-icon-wrapper">
+                                            <div class="app-icon placeholder"></div>
+                                            <span class="app-name">Photos</span>
+                                        </div>
+                                        <div class="app-icon-wrapper">
+                                            <div class="app-icon placeholder"></div>
+                                            <span class="app-name">Camera</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="phone-home-indicator"></div>
+                            </div>
+                        </div>
+
+                        <div class="mockup phone-mockup android">
+                            <div class="mockup-title">Android 主屏</div>
+                            <div class="phone-frame android">
+                                <div class="android-status-bar">
+                                    <span>9:41</span>
+                                    <span>📶 🔋</span>
+                                </div>
+                                <div class="phone-screen android-screen">
+                                    <div class="app-icons-grid">
+                                        <div class="app-icon-wrapper">
+                                            <div class="app-icon android-icon">
+                                                <img src="{{ url_for('main.preview_file', batch_id=batch_id, original_name=result.original_name, filename=result.files['android-chrome-192x192'].filename) }}" alt="Android icon">
+                                            </div>
+                                            <span class="app-name">{{ result.original_name.split('.')[0][:10] }}</span>
+                                        </div>
+                                        <div class="app-icon-wrapper">
+                                            <div class="app-icon placeholder"></div>
+                                            <span class="app-name">Chrome</span>
+                                        </div>
+                                        <div class="app-icon-wrapper">
+                                            <div class="app-icon placeholder"></div>
+                                            <span class="app-name">Gmail</span>
+                                        </div>
+                                        <div class="app-icon-wrapper">
+                                            <div class="app-icon placeholder"></div>
+                                            <span class="app-name">Maps</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mockup tile-mockup">
+                            <div class="mockup-title">Windows 磁贴</div>
+                            <div class="tile-container">
+                                <div class="windows-tile">
+                                    <img src="{{ url_for('main.preview_file', batch_id=batch_id, original_name=result.original_name, filename=result.files['mstile-150x150'].filename) }}" alt="Windows tile">
+                                </div>
+                                <div class="tile-label">{{ result.original_name.split('.')[0] }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-section">
+                    <h3>📄 生成的文件</h3>
+                    <div class="files-grid">
+                        {% for key, file_info in result.files.items() %}
+                        {% if file_info.type not in ['manifest', 'browserconfig', 'html'] %}
+                        <div class="file-card">
+                            <div class="file-preview">
+                                <img src="{{ url_for('main.preview_file', batch_id=batch_id, original_name=result.original_name, filename=file_info.filename) }}" alt="{{ file_info.filename }}">
+                            </div>
+                            <div class="file-info">
+                                <p class="file-name">{{ file_info.filename }}</p>
+                                <p class="file-size">
+                                    {% if file_info.size %}
+                                    {{ file_info.size[0] }}x{{ file_info.size[1] }}
+                                    {% elif file_info.sizes %}
+                                    {% for s in file_info.sizes %}{{ s[0] }}x{{ s[1] }}{% if not loop.last %}, {% endif %}{% endfor %}
+                                    {% endif %}
+                                </p>
+                                <p class="file-type">{{ file_info.type }}</p>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="preview-section">
+                    <h3>📋 HTML 代码片段</h3>
+                    <div class="code-snippet">
+                        <div class="code-header">
+                            <span>将以下代码插入到 HTML 的 &lt;head&gt; 标签中</span>
+                            <button class="copy-btn" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                        <pre><code id="htmlSnippet_{{ loop.index0 }}">{% for key, file_info in result.files.items() %}{% if file_info.type == 'favicon' %}<link rel="icon" type="image/x-icon" href="{{ file_info.filename }}">
+<link rel="shortcut icon" type="image/x-icon" href="{{ file_info.filename }}">
+{% endif %}{% endfor %}{% for key, file_info in result.files.items() %}{% if file_info.type == 'apple-touch-icon' %}<link rel="apple-touch-icon" sizes="{{ file_info.size[0] }}x{{ file_info.size[1] }}" href="{{ file_info.filename }}">
+{% endif %}{% endfor %}{% for key, file_info in result.files.items() %}{% if file_info.type == 'android-chrome' %}<link rel="icon" type="image/png" sizes="{{ file_info.size[0] }}x{{ file_info.size[1] }}" href="{{ file_info.filename }}">
+{% endif %}{% endfor %}<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.json">
+<meta name="msapplication-config" content="browserconfig.xml">
+<meta name="msapplication-TileColor" content="#ffffff">
+{% for key, file_info in result.files.items() %}{% if file_info.type == 'mstile' %}<meta name="msapplication-TileImage" content="{{ file_info.filename }}">
+{% endif %}{% endfor %}</code></pre>
+                    </div>
+                </div>
+
+                <div class="preview-section">
+                    <h3>📁 配置文件</h3>
+                    <div class="config-files">
+                        <div class="config-card">
+                            <h4>manifest.json</h4>
+                            <pre><code id="manifest_{{ loop.index0 }}"></code></pre>
+                            <button class="copy-btn small" onclick="copyCode(this)">复制</button>
+                        </div>
+                        <div class="config-card">
+                            <h4>browserconfig.xml</h4>
+                            <pre><code id="browserconfig_{{ loop.index0 }}"></code></pre>
+                            <button class="copy-btn small" onclick="copyCode(this)">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <script src="{{ url_for('static', filename='js/preview.js') }}"></script>
+    <script>
+        var results = {{ results|tojson|safe }};
+    </script>
+</body>
+</html>
