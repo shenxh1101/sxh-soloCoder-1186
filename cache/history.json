@@ -1,0 +1,77 @@
+[
+  {
+    "id": "347efd5b-3f73-4e95-9c8c-4c69f5b5628a",
+    "original_name": "test_icon.png",
+    "file_hash": "564d426e57d1a920b610eff09ea3d029600d68c47e1571e3ccdf4f5aea04f42c",
+    "cache_key": "564d426e57d1a920b610eff09ea3d029600d68c47e1571e3ccdf4f5aea04f42c_d780682ec26e0215ed05ab013f48c9b9",
+    "options": {
+      "corner_radius": 0,
+      "background_color": null,
+      "shadow": false,
+      "shadow_blur": 10,
+      "shadow_offset": [
+        0,
+        4
+      ],
+      "shadow_color": "rgba(0, 0, 0, 0.3)",
+      "custom_sizes": [],
+      "custom_filenames": {
+        "favicon": "my-favicon.ico",
+        "android-chrome-192x192": "android-192.png"
+      },
+      "app_name": "预览测试应用",
+      "app_short_name": "预览",
+      "theme_color": "#4ecdc4",
+      "background_color_manifest": "#4ecdc4",
+      "crop": {
+        "enabled": false,
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "scale": 1.0,
+        "mode": "cover"
+      }
+    },
+    "created_at": "2026-06-11 22:46:39",
+    "cached": false,
+    "file_count": 8
+  },
+  {
+    "id": "1e3672d3-51b7-494f-8578-e042ea48669a",
+    "original_name": "test_icon.png",
+    "file_hash": "564d426e57d1a920b610eff09ea3d029600d68c47e1571e3ccdf4f5aea04f42c",
+    "cache_key": "564d426e57d1a920b610eff09ea3d029600d68c47e1571e3ccdf4f5aea04f42c_52c4af0ce295f0897894d356d2024167",
+    "options": {
+      "corner_radius": 30,
+      "background_color": null,
+      "shadow": true,
+      "shadow_blur": 15,
+      "shadow_offset": [
+        0,
+        5
+      ],
+      "shadow_color": "rgba(0, 0, 0, 0.3)",
+      "custom_sizes": [],
+      "custom_filenames": {
+        "apple-touch-icon-180x180": "my-icon.png"
+      },
+      "app_name": "我的测试应用",
+      "app_short_name": "测试",
+      "theme_color": "#ff6b6b",
+      "background_color_manifest": "#ff6b6b",
+      "crop": {
+        "enabled": false,
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "scale": 1.0,
+        "mode": "cover"
+      }
+    },
+    "created_at": "2026-06-11 22:44:42",
+    "cached": false,
+    "file_count": 8
+  }
+]

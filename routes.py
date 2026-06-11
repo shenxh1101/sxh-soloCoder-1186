@@ -3,17 +3,22 @@ import io
 import uuid
 import tempfile
 import json
-from flask import Blueprint, render_template, request, jsonify, send_file, abort, current_app, url_for, send_from_directory
+import base64
+from datetime import datetime
+from flask import Blueprint, render_template, request, jsonify, send_file, abort, current_app, url_for, send_from_directory, redirect
 from werkzeug.utils import secure_filename
+from PIL import Image
 
 from utils import (
     allowed_file, ALLOWED_IMAGE_EXTENSIONS, ALLOWED_EXTENSIONS,
     get_file_hash, save_uploaded_file, extract_zip, parse_size_str
 )
-from icon_generator import ProcessingOptions
-from icon_service import generate_icon_set
+from icon_generator import ProcessingOptions, CropOptions
+from icon_service import generate_icon_set, prepare_image_for_crop
+from image_processor import crop_image, image_to_bytes
 from cache import CacheManager
 from zip_exporter import create_zip_from_directory, create_zip_from_multiple_directories
+from history_manager import HistoryManager, create_history_record
 
 main_bp = Blueprint('main', __name__)
 
@@ -21,6 +26,12 @@ def get_cache_manager():
     if not hasattr(current_app, 'cache_manager'):
         current_app.cache_manager = CacheManager(current_app.config['CACHE_FOLDER'])
     return current_app.cache_manager
+
+def get_history_manager():
+    if not hasattr(current_app, 'history_manager'):
+        history_file = os.path.join(current_app.config['CACHE_FOLDER'], 'history.json')
+        current_app.history_manager = HistoryManager(history_file, max_records=50)
+    return current_app.history_manager
 
 def parse_options_from_request(request) -> ProcessingOptions:
     form = request.form if request.method == 'POST' else request.args
@@ -45,17 +56,45 @@ def parse_options_from_request(request) -> ProcessingOptions:
                 custom_sizes.append(size)
     
     custom_filenames = {}
+    for key in form:
+        if key.startswith('filename_'):
+            filename_key = key[len('filename_'):]
+            value = form.get(key, '').strip()
+            if value:
+                custom_filenames[filename_key] = value
+    
     filenames_input = form.get('custom_filenames', '').strip()
     if filenames_input:
         try:
-            custom_filenames = json.loads(filenames_input)
+            parsed = json.loads(filenames_input)
+            for k, v in parsed.items():
+                if v:
+                    custom_filenames[k] = v
         except:
             pass
     
     app_name = form.get('app_name', 'My App').strip() or 'My App'
     app_short_name = form.get('app_short_name', 'App').strip() or 'App'
     theme_color = form.get('theme_color', '#ffffff').strip() or '#ffffff'
-    background_color_manifest = form.get('background_color_manifest', '#ffffff').strip() or '#ffffff'
+    background_color_manifest = form.get('background_color_manifest', theme_color).strip() or theme_color
+    
+    crop_enabled = form.get('crop_enabled', 'false').lower() in ['true', '1', 'yes']
+    crop_x = int(form.get('crop_x', 0) or 0)
+    crop_y = int(form.get('crop_y', 0) or 0)
+    crop_width = int(form.get('crop_width', 0) or 0)
+    crop_height = int(form.get('crop_height', 0) or 0)
+    crop_scale = float(form.get('crop_scale', 1.0) or 1.0)
+    crop_mode = form.get('crop_mode', 'cover').strip() or 'cover'
+    
+    crop = CropOptions(
+        enabled=crop_enabled,
+        x=crop_x,
+        y=crop_y,
+        width=crop_width,
+        height=crop_height,
+        scale=crop_scale,
+        mode=crop_mode
+    )
     
     return ProcessingOptions(
         corner_radius=corner_radius,
@@ -69,12 +108,51 @@ def parse_options_from_request(request) -> ProcessingOptions:
         app_name=app_name,
         app_short_name=app_short_name,
         theme_color=theme_color,
-        background_color_manifest=background_color_manifest
+        background_color_manifest=background_color_manifest,
+        crop=crop
     )
+
+def options_to_dict(options: ProcessingOptions) -> dict:
+    return {
+        'corner_radius': options.corner_radius,
+        'background_color': options.background_color,
+        'shadow': options.shadow,
+        'shadow_blur': options.shadow_blur,
+        'shadow_offset': list(options.shadow_offset),
+        'shadow_color': options.shadow_color,
+        'custom_sizes': [list(s) for s in options.custom_sizes],
+        'custom_filenames': options.custom_filenames,
+        'app_name': options.app_name,
+        'app_short_name': options.app_short_name,
+        'theme_color': options.theme_color,
+        'background_color_manifest': options.background_color_manifest,
+        'crop': {
+            'enabled': options.crop.enabled,
+            'x': options.crop.x,
+            'y': options.crop.y,
+            'width': options.crop.width,
+            'height': options.crop.height,
+            'scale': options.crop.scale,
+            'mode': options.crop.mode
+        }
+    }
+
+def get_batch_results(batch_id):
+    return current_app.config.get('BATCH_RESULTS', {}).get(batch_id)
+
+def set_batch_results(batch_id, data):
+    current_app.config.setdefault('BATCH_RESULTS', {})
+    current_app.config['BATCH_RESULTS'][batch_id] = data
 
 @main_bp.route('/')
 def index():
     return render_template('index.html')
+
+@main_bp.route('/history')
+def history():
+    history_mgr = get_history_manager()
+    records = history_mgr.get_all()
+    return render_template('history.html', records=records)
 
 @main_bp.route('/upload', methods=['POST'])
 def upload():
@@ -86,7 +164,6 @@ def upload():
         return jsonify({'error': 'No files selected'}), 400
     
     options = parse_options_from_request(request)
-    cache_mgr = get_cache_manager()
     
     image_paths = []
     is_batch = False
@@ -113,6 +190,170 @@ def upload():
     if not image_paths:
         return jsonify({'error': 'No valid images found'}), 400
     
+    upload_id = str(uuid.uuid4())
+    upload_data = {
+        'image_paths': image_paths,
+        'options': options,
+        'is_batch': is_batch,
+        'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    
+    current_app.config.setdefault('UPLOAD_SESSIONS', {})
+    current_app.config['UPLOAD_SESSIONS'][upload_id] = upload_data
+    
+    skip_crop = request.form.get('skip_crop', 'false').lower() in ['true', '1', 'yes']
+    
+    if skip_crop:
+        return jsonify({
+            'success': True,
+            'upload_id': upload_id,
+            'skip_crop': True
+        })
+    
+    first_image = image_paths[0]
+    with Image.open(first_image) as img:
+        img_width, img_height = img.size
+    
+    return jsonify({
+        'success': True,
+        'upload_id': upload_id,
+        'image_count': len(image_paths),
+        'is_batch': is_batch,
+        'first_image': {
+            'name': os.path.basename(first_image),
+            'width': img_width,
+            'height': img_height
+        },
+        'crop_url': url_for('main.crop_page', upload_id=upload_id)
+    })
+
+@main_bp.route('/crop/<upload_id>')
+def crop_page(upload_id):
+    upload_sessions = current_app.config.get('UPLOAD_SESSIONS', {})
+    upload_data = upload_sessions.get(upload_id)
+    
+    if not upload_data:
+        abort(404)
+    
+    first_image = upload_data['image_paths'][0]
+    image_name = os.path.basename(first_image)
+    
+    with Image.open(first_image) as img:
+        img_width, img_height = img.size
+    
+    return render_template('crop.html',
+                           upload_id=upload_id,
+                           image_name=image_name,
+                           image_width=img_width,
+                           image_height=img_height,
+                           image_count=len(upload_data['image_paths']),
+                           is_batch=upload_data['is_batch'])
+
+@main_bp.route('/api/crop-image/<upload_id>')
+def crop_image_api(upload_id):
+    upload_sessions = current_app.config.get('UPLOAD_SESSIONS', {})
+    upload_data = upload_sessions.get(upload_id)
+    
+    if not upload_data:
+        abort(404)
+    
+    first_image = upload_data['image_paths'][0]
+    
+    x = int(request.args.get('x', 0))
+    y = int(request.args.get('y', 0))
+    width = int(request.args.get('width', 0))
+    height = int(request.args.get('height', 0))
+    scale = float(request.args.get('scale', 1.0))
+    mode = request.args.get('mode', 'cover')
+    preview_size = int(request.args.get('preview_size', 200))
+    
+    img = prepare_image_for_crop(first_image)
+    
+    if width > 0 and height > 0:
+        cropped = crop_image(img, x, y, width, height, scale, mode)
+    else:
+        cropped = img
+    
+    cropped.thumbnail((preview_size, preview_size), Image.LANCZOS)
+    
+    buf = io.BytesIO()
+    cropped.save(buf, format='PNG')
+    buf.seek(0)
+    
+    return send_file(buf, mimetype='image/png')
+
+@main_bp.route('/api/original-image/<upload_id>')
+def original_image_api(upload_id):
+    upload_sessions = current_app.config.get('UPLOAD_SESSIONS', {})
+    upload_data = upload_sessions.get(upload_id)
+    
+    if not upload_data:
+        abort(404)
+    
+    first_image = upload_data['image_paths'][0]
+    
+    img = Image.open(first_image)
+    max_size = 800
+    if img.size[0] > max_size or img.size[1] > max_size:
+        img.thumbnail((max_size, max_size), Image.LANCZOS)
+    
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    
+    return send_file(buf, mimetype='image/png')
+
+@main_bp.route('/generate', methods=['POST'])
+def generate():
+    data = request.get_json() if request.is_json else request.form
+    upload_id = data.get('upload_id')
+    
+    upload_sessions = current_app.config.get('UPLOAD_SESSIONS', {})
+    upload_data = upload_sessions.get(upload_id)
+    
+    if not upload_data:
+        return jsonify({'error': 'Upload session not found'}), 404
+    
+    options = parse_options_from_request(request)
+    base_options = upload_data.get('options')
+    if base_options:
+        if hasattr(base_options, '__dict__'):
+            if options.crop and options.crop.enabled:
+                base_options.crop = options.crop
+            options = base_options
+        elif isinstance(base_options, dict):
+            if options.crop and options.crop.enabled:
+                base_options['crop'] = {
+                    'enabled': options.crop.enabled,
+                    'x': options.crop.x,
+                    'y': options.crop.y,
+                    'width': options.crop.width,
+                    'height': options.crop.height,
+                    'scale': options.crop.scale,
+                    'mode': options.crop.mode
+                }
+            from icon_generator import ProcessingOptions, CropOptions
+            opts = ProcessingOptions(
+                corner_radius=base_options.get('corner_radius', 0),
+                background_color=base_options.get('background_color'),
+                shadow=base_options.get('shadow', False),
+                shadow_blur=base_options.get('shadow_blur', 10),
+                shadow_offset=tuple(base_options.get('shadow_offset', [0, 4])),
+                shadow_color=base_options.get('shadow_color', 'rgba(0, 0, 0, 0.3)'),
+                custom_sizes=[tuple(s) for s in base_options.get('custom_sizes', [])],
+                custom_filenames=base_options.get('custom_filenames', {}),
+                app_name=base_options.get('app_name', 'My App'),
+                app_short_name=base_options.get('app_short_name', 'App'),
+                theme_color=base_options.get('theme_color', '#ffffff'),
+                background_color_manifest=base_options.get('background_color_manifest', '#ffffff'),
+                crop=CropOptions(**base_options.get('crop', {})) if base_options.get('crop') else CropOptions()
+            )
+            options = opts
+    
+    cache_mgr = get_cache_manager()
+    history_mgr = get_history_manager()
+    
+    image_paths = upload_data['image_paths']
     results = []
     temp_output_dirs = {}
     
@@ -136,6 +377,17 @@ def upload():
                 }
                 results.append(result_data)
                 temp_output_dirs[original_name] = cached['cache_dir']
+                
+                record = create_history_record(
+                    record_id=str(uuid.uuid4()),
+                    original_name=original_name,
+                    file_hash=file_hash,
+                    cache_key=cache_key,
+                    options=options_to_dict(options),
+                    cached=True,
+                    file_count=len(cached['files'])
+                )
+                history_mgr.add_record(record)
                 continue
             
             output_dir = os.path.join(current_app.config['OUTPUT_FOLDER'], str(uuid.uuid4()))
@@ -145,23 +397,41 @@ def upload():
             
             cache_mgr.set(cache_key, generated_files, output_dir, original_name)
             
+            files_info = {}
+            for k, v in generated_files.items():
+                if 'filename' in v:
+                    files_info[k] = {
+                        'filename': v['filename'],
+                        'type': v.get('type', ''),
+                        'size': v.get('size'),
+                        'sizes': v.get('sizes')
+                    }
+            
             result_data = {
                 'original_name': original_name,
                 'file_hash': file_hash,
                 'cache_key': cache_key,
                 'cached': False,
-                'files': {k: {
-                    'filename': v['filename'],
-                    'type': v.get('type', ''),
-                    'size': v.get('size'),
-                    'sizes': v.get('sizes')
-                } for k, v in generated_files.items() if 'filename' in v},
+                'files': files_info,
                 'cache_dir': output_dir
             }
             results.append(result_data)
             temp_output_dirs[original_name] = output_dir
             
+            record = create_history_record(
+                record_id=str(uuid.uuid4()),
+                original_name=original_name,
+                file_hash=file_hash,
+                cache_key=cache_key,
+                options=options_to_dict(options),
+                cached=False,
+                file_count=len(files_info)
+            )
+            history_mgr.add_record(record)
+            
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             results.append({
                 'original_name': os.path.basename(image_path),
                 'error': str(e)
@@ -173,40 +443,53 @@ def upload():
                 except:
                     pass
     
+    if upload_id in upload_sessions:
+        del upload_sessions[upload_id]
+    
     batch_id = str(uuid.uuid4())
-    current_app.config.setdefault('BATCH_RESULTS', {})
-    current_app.config['BATCH_RESULTS'][batch_id] = {
+    set_batch_results(batch_id, {
         'results': results,
         'output_dirs': temp_output_dirs,
         'options': options
-    }
+    })
     
     return jsonify({
         'success': True,
         'batch_id': batch_id,
         'count': len(results),
-        'is_batch': is_batch,
-        'results': results
+        'is_batch': len(results) > 1,
+        'results': results,
+        'preview_url': url_for('main.preview', batch_id=batch_id)
     })
 
 @main_bp.route('/preview/<batch_id>')
 def preview(batch_id):
-    batch_results = current_app.config.get('BATCH_RESULTS', {}).get(batch_id)
-    if not batch_results:
+    batch_data = get_batch_results(batch_id)
+    if not batch_data:
         abort(404)
+    
+    options = batch_data.get('options')
+    if options:
+        if isinstance(options, dict):
+            options_dict = options
+        else:
+            options_dict = options_to_dict(options)
+    else:
+        options_dict = {}
     
     return render_template('preview.html', 
                            batch_id=batch_id, 
-                           results=batch_results['results'],
-                           is_batch=len(batch_results['results']) > 1)
+                           results=batch_data['results'],
+                           is_batch=len(batch_data['results']) > 1,
+                           options=options_dict)
 
 @main_bp.route('/preview/file/<batch_id>/<original_name>/<filename>')
 def preview_file(batch_id, original_name, filename):
-    batch_results = current_app.config.get('BATCH_RESULTS', {}).get(batch_id)
-    if not batch_results:
+    batch_data = get_batch_results(batch_id)
+    if not batch_data:
         abort(404)
     
-    output_dir = batch_results['output_dirs'].get(original_name)
+    output_dir = batch_data['output_dirs'].get(original_name)
     if not output_dir:
         abort(404)
     
@@ -218,11 +501,11 @@ def preview_file(batch_id, original_name, filename):
 
 @main_bp.route('/download/<batch_id>')
 def download(batch_id):
-    batch_results = current_app.config.get('BATCH_RESULTS', {}).get(batch_id)
-    if not batch_results:
+    batch_data = get_batch_results(batch_id)
+    if not batch_data:
         abort(404)
     
-    output_dirs = batch_results['output_dirs']
+    output_dirs = batch_data['output_dirs']
     
     if len(output_dirs) == 1:
         original_name = list(output_dirs.keys())[0]
@@ -243,11 +526,11 @@ def download(batch_id):
 
 @main_bp.route('/download/single/<batch_id>/<original_name>')
 def download_single(batch_id, original_name):
-    batch_results = current_app.config.get('BATCH_RESULTS', {}).get(batch_id)
-    if not batch_results:
+    batch_data = get_batch_results(batch_id)
+    if not batch_data:
         abort(404)
     
-    output_dir = batch_results['output_dirs'].get(original_name)
+    output_dir = batch_data['output_dirs'].get(original_name)
     if not output_dir:
         abort(404)
     
@@ -262,17 +545,86 @@ def download_single(batch_id, original_name):
         download_name=download_name
     )
 
+@main_bp.route('/history/preview/<record_id>')
+def history_preview(record_id):
+    history_mgr = get_history_manager()
+    record = history_mgr.get_by_id(record_id)
+    
+    if not record:
+        abort(404)
+    
+    cache_mgr = get_cache_manager()
+    cached = cache_mgr.get(record.cache_key)
+    
+    if not cached:
+        abort(404)
+    
+    batch_id = f"history_{record_id}"
+    set_batch_results(batch_id, {
+        'results': [{
+            'original_name': record.original_name,
+            'file_hash': record.file_hash,
+            'cache_key': record.cache_key,
+            'cached': True,
+            'files': cached['files'],
+            'cache_dir': cached['cache_dir']
+        }],
+        'output_dirs': {record.original_name: cached['cache_dir']},
+        'options': record.options
+    })
+    
+    return redirect(url_for('main.preview', batch_id=batch_id))
+
+@main_bp.route('/history/download/<record_id>')
+def history_download(record_id):
+    history_mgr = get_history_manager()
+    record = history_mgr.get_by_id(record_id)
+    
+    if not record:
+        abort(404)
+    
+    cache_mgr = get_cache_manager()
+    cached = cache_mgr.get(record.cache_key)
+    
+    if not cached:
+        abort(404)
+    
+    zip_bytes = create_zip_from_directory(cached['cache_dir'])
+    download_name = f"{os.path.splitext(record.original_name)[0]}_icons.zip"
+    
+    zip_io = io.BytesIO(zip_bytes)
+    return send_file(
+        zip_io,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=download_name
+    )
+
+@main_bp.route('/api/history/delete/<record_id>', methods=['POST'])
+def delete_history(record_id):
+    history_mgr = get_history_manager()
+    success = history_mgr.delete_record(record_id)
+    return jsonify({'success': success})
+
 @main_bp.route('/api/cache/stats')
 def cache_stats():
     cache_mgr = get_cache_manager()
     stats = cache_mgr.get_stats()
+    
+    history_mgr = get_history_manager()
+    stats['history_count'] = history_mgr.count()
+    
     return jsonify(stats)
 
 @main_bp.route('/api/cache/clear', methods=['POST'])
 def clear_cache():
     cache_mgr = get_cache_manager()
     cache_mgr.clear()
-    return jsonify({'success': True, 'message': 'Cache cleared'})
+    
+    history_mgr = get_history_manager()
+    history_mgr.clear_all()
+    
+    return jsonify({'success': True, 'message': 'Cache and history cleared'})
 
 @main_bp.errorhandler(413)
 def too_large(e):

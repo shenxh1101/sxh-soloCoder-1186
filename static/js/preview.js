@@ -18,6 +18,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     if (typeof results !== 'undefined' && Array.isArray(results)) {
+        const appName = (options && options.app_name) || 'My App';
+        const appShortName = (options && options.app_short_name) || 'App';
+        const themeColor = (options && options.theme_color) || '#ffffff';
+        const bgColorManifest = (options && options.background_color_manifest) || themeColor;
+        
         results.forEach((result, index) => {
             if (result.error) return;
             
@@ -39,11 +44,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 const manifest = {
-                    name: 'My App',
-                    short_name: 'App',
+                    name: appName,
+                    short_name: appShortName,
                     icons: androidIcons,
-                    theme_color: '#ffffff',
-                    background_color: '#ffffff',
+                    theme_color: themeColor,
+                    background_color: bgColorManifest,
                     display: 'standalone'
                 };
                 
@@ -64,7 +69,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <msapplication>
         <tile>
             <square150x150logo src="${mstileFilename}"/>
-            <TileColor>#ffffff</TileColor>
+            <TileColor>${themeColor}</TileColor>
         </tile>
     </msapplication>
 </browserconfig>`;

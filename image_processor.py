@@ -2,7 +2,7 @@ import io
 import math
 from typing import Tuple, Optional
 from PIL import Image, ImageDraw, ImageFilter
-from utils import parse_color, parse_rgba, ensure_fit
+from utils import parse_color, parse_rgba
 from icon_generator import ProcessingOptions
 
 def apply_background(image: Image.Image, bg_color: Optional[str]) -> Image.Image:
@@ -87,8 +87,77 @@ def process_image(image: Image.Image, options: ProcessingOptions) -> Image.Image
 
 def generate_single_icon(image: Image.Image, size: Tuple[int, int], 
                          options: ProcessingOptions) -> Image.Image:
-    img = ensure_fit(image, size)
-    return process_image(img, options)
+    target_w, target_h = size
+    
+    effect_padding_x = 0
+    effect_padding_y = 0
+    
+    if options.shadow:
+        blur = options.shadow_blur
+        offset_x, offset_y = options.shadow_offset
+        effect_padding_x = blur + abs(offset_x)
+        effect_padding_y = blur + abs(offset_y)
+    
+    content_w = target_w - effect_padding_x * 2
+    content_h = target_h - effect_padding_y * 2
+    
+    if content_w < 1:
+        content_w = 1
+    if content_h < 1:
+        content_h = 1
+    
+    content_img = ensure_fit_content(image, (content_w, content_h))
+    
+    processed = process_image(content_img, options)
+    
+    result = Image.new('RGBA', (target_w, target_h), (0, 0, 0, 0))
+    
+    proc_w, proc_h = processed.size
+    
+    paste_x = (target_w - proc_w) // 2
+    paste_y = (target_h - proc_h) // 2
+    
+    if options.shadow:
+        blur = options.shadow_blur
+        offset_x, offset_y = options.shadow_offset
+        
+        paste_x = blur - min(0, offset_x)
+        paste_y = blur - min(0, offset_y)
+        
+        content_center_x = target_w // 2
+        content_center_y = target_h // 2
+        
+        content_left = content_center_x - content_w // 2
+        content_top = content_center_y - content_h // 2
+        
+        paste_x = content_left - (blur - min(0, offset_x))
+        paste_y = content_top - (blur - min(0, offset_y))
+    
+    if paste_x + proc_w > target_w:
+        paste_x = target_w - proc_w
+    if paste_y + proc_h > target_h:
+        paste_y = target_h - proc_h
+    if paste_x < 0:
+        paste_x = 0
+    if paste_y < 0:
+        paste_y = 0
+    
+    result.paste(processed, (paste_x, paste_y), processed)
+    
+    return result
+
+def ensure_fit_content(image: Image.Image, target_size: Tuple[int, int]) -> Image.Image:
+    src_w, src_h = image.size
+    dst_w, dst_h = target_size
+    ratio = max(dst_w / src_w, dst_h / src_h)
+    new_w = int(src_w * ratio)
+    new_h = int(src_h * ratio)
+    img = image.resize((new_w, new_h), Image.LANCZOS)
+    left = (new_w - dst_w) // 2
+    top = (new_h - dst_h) // 2
+    right = left + dst_w
+    bottom = top + dst_h
+    return img.crop((left, top, right, bottom))
 
 def generate_favicon(images: list, output_path: str) -> None:
     if not images:
@@ -107,3 +176,48 @@ def image_to_bytes(image: Image.Image, format: str = 'PNG') -> bytes:
     buf = io.BytesIO()
     image.save(buf, format=format)
     return buf.getvalue()
+
+def crop_image(image: Image.Image, x: int, y: int, width: int, height: int, 
+               scale: float = 1.0, mode: str = 'cover', 
+               target_size: Tuple[int, int] = None) -> Image.Image:
+    img = image.copy()
+    
+    if img.mode != 'RGBA':
+        img = img.convert('RGBA')
+    
+    if scale != 1.0 and scale > 0:
+        new_w = int(img.size[0] * scale)
+        new_h = int(img.size[1] * scale)
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+    
+    img_w, img_h = img.size
+    
+    if x < 0:
+        x = 0
+    if y < 0:
+        y = 0
+    if width <= 0 or x + width > img_w:
+        width = img_w - x
+    if height <= 0 or y + height > img_h:
+        height = img_h - y
+    
+    cropped = img.crop((x, y, x + width, y + height))
+    
+    if target_size and mode == 'cover':
+        return ensure_fit_content(cropped, target_size)
+    elif target_size and mode == 'contain':
+        tw, th = target_size
+        cw, ch = cropped.size
+        ratio = min(tw / cw, th / ch)
+        new_w = int(cw * ratio)
+        new_h = int(ch * ratio)
+        resized = cropped.resize((new_w, new_h), Image.LANCZOS)
+        result = Image.new('RGBA', target_size, (0, 0, 0, 0))
+        px = (tw - new_w) // 2
+        py = (th - new_h) // 2
+        result.paste(resized, (px, py), resized)
+        return result
+    elif target_size and mode == 'fill':
+        return cropped.resize(target_size, Image.LANCZOS)
+    
+    return cropped

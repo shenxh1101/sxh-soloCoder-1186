@@ -41,6 +41,15 @@ class CacheManager:
             'app_short_name': options.app_short_name,
             'theme_color': options.theme_color,
             'background_color_manifest': options.background_color_manifest,
+            'crop': {
+                'enabled': options.crop.enabled,
+                'x': options.crop.x,
+                'y': options.crop.y,
+                'width': options.crop.width,
+                'height': options.crop.height,
+                'scale': options.crop.scale,
+                'mode': options.crop.mode
+            } if options.crop else None
         }
         options_str = json.dumps(options_dict, sort_keys=True)
         return hashlib.md5(options_str.encode('utf-8')).hexdigest()

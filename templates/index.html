@@ -11,6 +11,9 @@
         <header class="header">
             <h1>🖼️ Favicon & 图标批量生成器</h1>
             <p class="subtitle">上传高清图片，一键生成适配各种平台的图标集</p>
+            <div class="header-actions">
+                <a href="{{ url_for('main.history') }}" class="btn-secondary">📋 历史记录</a>
+            </div>
         </header>
 
         <div class="main-content">
@@ -112,11 +115,48 @@
                         <input type="text" id="customSizes" name="custom_sizes" placeholder="例如: 64, 128x256, 256">
                         <p class="hint">多个尺寸用逗号分隔，如: 64, 128x256, 512</p>
                     </div>
+                    
+                    <div class="option-item">
+                        <label class="checkbox-inline">
+                            <input type="checkbox" id="enableCrop" checked>
+                            上传后进入裁剪编辑
+                        </label>
+                    </div>
+                </div>
+
+                <div class="option-group">
+                    <div class="option-group-header">
+                        <h3>📝 输出文件名</h3>
+                        <button class="toggle-btn" id="toggleFilenames">展开</button>
+                    </div>
+                    <div class="filename-options" id="filenameOptions" style="display: none;">
+                        <div class="filename-item">
+                            <label>Favicon</label>
+                            <input type="text" name="filename_favicon" value="favicon.ico" placeholder="favicon.ico">
+                        </div>
+                        <div class="filename-item">
+                            <label>Apple Touch (180px)</label>
+                            <input type="text" name="filename_apple-touch-icon-180x180" value="apple-touch-icon.png" placeholder="apple-touch-icon.png">
+                        </div>
+                        <div class="filename-item">
+                            <label>Android Chrome (192px)</label>
+                            <input type="text" name="filename_android-chrome-192x192" value="android-chrome-192x192.png" placeholder="android-chrome-192x192.png">
+                        </div>
+                        <div class="filename-item">
+                            <label>Android Chrome (512px)</label>
+                            <input type="text" name="filename_android-chrome-512x512" value="android-chrome-512x512.png" placeholder="android-chrome-512x512.png">
+                        </div>
+                        <div class="filename-item">
+                            <label>Windows 磁贴 (150px)</label>
+                            <input type="text" name="filename_mstile-150x150" value="mstile-150x150.png" placeholder="mstile-150x150.png">
+                        </div>
+                        <p class="hint">留空则使用默认文件名。自定义尺寸的文件名可在生成后预览页修改。</p>
+                    </div>
                 </div>
 
                 <button id="generateBtn" class="generate-btn" disabled>
                     <span class="btn-icon">✨</span>
-                    <span class="btn-text">生成图标</span>
+                    <span class="btn-text">上传并进入下一步</span>
                 </button>
             </div>
         </div>
@@ -124,7 +164,7 @@
         <div class="progress-overlay" id="progressOverlay" style="display: none;">
             <div class="progress-content">
                 <div class="spinner"></div>
-                <h3>正在生成图标...</h3>
+                <h3 id="progressTitle">正在上传...</h3>
                 <p id="progressText">请稍候</p>
             </div>
         </div>

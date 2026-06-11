@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const generateBtn = document.getElementById('generateBtn');
     const progressOverlay = document.getElementById('progressOverlay');
     const progressText = document.getElementById('progressText');
+    const progressTitle = document.getElementById('progressTitle');
     
     const cornerRadius = document.getElementById('cornerRadius');
     const cornerRadiusValue = document.getElementById('cornerRadiusValue');
@@ -15,8 +16,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const transparentBg = document.getElementById('transparentBg');
     const backgroundColor = document.getElementById('backgroundColor');
     const backgroundColorText = document.getElementById('backgroundColorText');
+    const toggleFilenames = document.getElementById('toggleFilenames');
+    const filenameOptions = document.getElementById('filenameOptions');
+    const enableCrop = document.getElementById('enableCrop');
     
     let selectedFiles = [];
+    let filenamesExpanded = false;
 
     cornerRadius.addEventListener('input', function() {
         cornerRadiusValue.textContent = this.value + 'px';
@@ -47,6 +52,14 @@ document.addEventListener('DOMContentLoaded', function() {
             backgroundColor.value = this.value;
         }
     });
+
+    if (toggleFilenames) {
+        toggleFilenames.addEventListener('click', function() {
+            filenamesExpanded = !filenamesExpanded;
+            filenameOptions.style.display = filenamesExpanded ? 'block' : 'none';
+            toggleFilenames.textContent = filenamesExpanded ? '收起' : '展开';
+        });
+    }
 
     uploadArea.addEventListener('dragover', function(e) {
         e.preventDefault();
@@ -120,9 +133,7 @@ document.addEventListener('DOMContentLoaded', function() {
         generateBtn.disabled = selectedFiles.length === 0;
     }
 
-    generateBtn.addEventListener('click', function() {
-        if (selectedFiles.length === 0) return;
-        
+    function collectFormData() {
         const formData = new FormData();
         
         selectedFiles.forEach(file => {
@@ -159,8 +170,30 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('custom_sizes', customSizes);
         }
         
+        const filenameInputs = document.querySelectorAll('input[name^="filename_"]');
+        filenameInputs.forEach(input => {
+            if (input.value.trim()) {
+                formData.append(input.name, input.value.trim());
+            }
+        });
+        
+        return formData;
+    }
+
+    generateBtn.addEventListener('click', function() {
+        if (selectedFiles.length === 0) return;
+        
+        const formData = collectFormData();
+        
+        if (enableCrop && enableCrop.checked) {
+            formData.append('skip_crop', 'false');
+        } else {
+            formData.append('skip_crop', 'true');
+        }
+        
         progressOverlay.style.display = 'flex';
-        progressText.textContent = '正在上传并生成图标...';
+        progressTitle.textContent = '正在上传...';
+        progressText.textContent = '请稍候';
         
         fetch('/upload', {
             method: 'POST',
@@ -174,12 +207,41 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(data => {
             if (data.success) {
-                progressText.textContent = '生成成功！正在跳转到预览页面...';
-                setTimeout(() => {
-                    window.location.href = `/preview/${data.batch_id}`;
-                }, 500);
+                if (data.skip_crop) {
+                    progressTitle.textContent = '正在生成图标...';
+                    progressText.textContent = '请稍候';
+                    
+                    const generateFormData = new FormData();
+                    generateFormData.append('upload_id', data.upload_id);
+                    
+                    const allOptions = collectFormData();
+                    for (let pair of allOptions.entries()) {
+                        if (pair[0] !== 'files') {
+                            generateFormData.append(pair[0], pair[1]);
+                        }
+                    }
+                    
+                    return fetch('/generate', {
+                        method: 'POST',
+                        body: generateFormData
+                    }).then(r => r.json()).then(d => {
+                        if (d.success) {
+                            progressText.textContent = '生成成功！正在跳转到预览页面...';
+                            setTimeout(() => {
+                                window.location.href = d.preview_url;
+                            }, 500);
+                        } else {
+                            throw new Error(d.error || '生成失败');
+                        }
+                    });
+                } else {
+                    progressText.textContent = '上传成功！正在跳转到裁剪页面...';
+                    setTimeout(() => {
+                        window.location.href = data.crop_url;
+                    }, 500);
+                }
             } else {
-                throw new Error(data.error || '生成失败');
+                throw new Error(data.error || '上传失败');
             }
         })
         .catch(error => {

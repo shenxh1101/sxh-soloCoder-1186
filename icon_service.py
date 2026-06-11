@@ -3,7 +3,7 @@ import json
 from typing import Dict, List, Tuple, Optional
 from PIL import Image
 from icon_generator import IconConfig, ProcessingOptions
-from image_processor import generate_single_icon, generate_favicon, generate_png, image_to_bytes
+from image_processor import generate_single_icon, generate_favicon, generate_png, image_to_bytes, crop_image
 from utils import load_image, hex_color
 
 class IconService:
@@ -12,38 +12,117 @@ class IconService:
         os.makedirs(self.output_folder, exist_ok=True)
     
     def get_all_sizes(self, options: ProcessingOptions) -> Dict[str, List[Tuple[int, int]]]:
+        icon_config = IconConfig()
         sizes = {}
-        sizes['favicon'] = IconConfig.DEFAULT_SIZES['favicon'].copy()
-        sizes['apple-touch-icon'] = IconConfig.DEFAULT_SIZES['apple-touch-icon'].copy()
-        sizes['android-chrome'] = IconConfig.DEFAULT_SIZES['android-chrome'].copy()
-        sizes['mstile'] = IconConfig.DEFAULT_SIZES['mstile'].copy()
+        sizes['favicon'] = icon_config.DEFAULT_SIZES['favicon'].copy()
+        sizes['apple-touch-icon'] = icon_config.DEFAULT_SIZES['apple-touch-icon'].copy()
+        sizes['android-chrome'] = icon_config.DEFAULT_SIZES['android-chrome'].copy()
+        sizes['mstile'] = icon_config.DEFAULT_SIZES['mstile'].copy()
         
         if options.custom_sizes:
             sizes['custom'] = options.custom_sizes
         
         return sizes
     
+    def get_size_configs(self, options: ProcessingOptions) -> List[Dict]:
+        configs = []
+        icon_config = IconConfig()
+        
+        configs.append({
+            'key': 'favicon',
+            'type': 'favicon',
+            'size': None,
+            'sizes': icon_config.DEFAULT_SIZES['favicon'],
+            'label': icon_config.SIZE_LABELS['favicon'],
+            'default_filename': icon_config.DEFAULT_FILENAMES['favicon'],
+            'is_favicon': True
+        })
+        
+        for size in icon_config.DEFAULT_SIZES['apple-touch-icon']:
+            key = f'apple-touch-icon-{size[0]}x{size[1]}'
+            configs.append({
+                'key': key,
+                'type': 'apple-touch-icon',
+                'size': size,
+                'sizes': [size],
+                'label': f'{icon_config.SIZE_LABELS["apple-touch-icon"]} ({size[0]}x{size[1]})',
+                'default_filename': icon_config.DEFAULT_FILENAMES['apple-touch-icon'],
+                'is_favicon': False
+            })
+        
+        for size in icon_config.DEFAULT_SIZES['android-chrome']:
+            size_key = f'android-chrome-{size[0]}'
+            key = f'android-chrome-{size[0]}x{size[1]}'
+            configs.append({
+                'key': key,
+                'type': 'android-chrome',
+                'size': size,
+                'sizes': [size],
+                'label': f'{icon_config.SIZE_LABELS[f"android-chrome-{size[0]}"]}',
+                'default_filename': icon_config.DEFAULT_FILENAMES[size_key],
+                'is_favicon': False
+            })
+        
+        for size in icon_config.DEFAULT_SIZES['mstile']:
+            key = f'mstile-{size[0]}x{size[1]}'
+            configs.append({
+                'key': key,
+                'type': 'mstile',
+                'size': size,
+                'sizes': [size],
+                'label': f'{icon_config.SIZE_LABELS["mstile"]} ({size[0]}x{size[1]})',
+                'default_filename': icon_config.DEFAULT_FILENAMES['mstile'],
+                'is_favicon': False
+            })
+        
+        if options.custom_sizes:
+            for i, size in enumerate(options.custom_sizes):
+                key = f'custom-{size[0]}x{size[1]}'
+                configs.append({
+                    'key': key,
+                    'type': 'custom',
+                    'size': size,
+                    'sizes': [size],
+                    'label': f'自定义 ({size[0]}x{size[1]})',
+                    'default_filename': f'custom-{size[0]}x{size[1]}.png',
+                    'is_favicon': False
+                })
+        
+        return configs
+    
     def get_filename(self, icon_type: str, size: Tuple[int, int], 
                      options: ProcessingOptions, index: int = 0) -> str:
+        icon_config = IconConfig()
         filenames = options.custom_filenames if options.custom_filenames else {}
         
         key = f'{icon_type}-{size[0]}x{size[1]}'
-        if key in filenames:
+        if key in filenames and filenames[key]:
             return filenames[key]
         
         if icon_type == 'favicon':
-            return filenames.get('favicon', IconConfig.DEFAULT_FILENAMES['favicon'])
+            if 'favicon' in filenames and filenames['favicon']:
+                return filenames['favicon']
+            return icon_config.DEFAULT_FILENAMES['favicon']
         elif icon_type == 'apple-touch-icon':
-            return filenames.get('apple-touch-icon', IconConfig.DEFAULT_FILENAMES['apple-touch-icon'])
+            if 'apple-touch-icon' in filenames and filenames['apple-touch-icon']:
+                return filenames['apple-touch-icon']
+            return icon_config.DEFAULT_FILENAMES['apple-touch-icon']
         elif icon_type == 'android-chrome':
             if size[0] == 192:
-                return filenames.get('android-chrome-192', IconConfig.DEFAULT_FILENAMES['android-chrome-192'])
-            elif size[0] == 512:
-                return filenames.get('android-chrome-512', IconConfig.DEFAULT_FILENAMES['android-chrome-512'])
+                key_name = 'android-chrome-192'
+            else:
+                key_name = 'android-chrome-512'
+            if key_name in filenames and filenames[key_name]:
+                return filenames[key_name]
+            return icon_config.DEFAULT_FILENAMES.get(key_name, f'android-chrome-{size[0]}x{size[1]}.png')
         elif icon_type == 'mstile':
-            return filenames.get('mstile', IconConfig.DEFAULT_FILENAMES['mstile'])
+            if 'mstile' in filenames and filenames['mstile']:
+                return filenames['mstile']
+            return icon_config.DEFAULT_FILENAMES['mstile']
         elif icon_type == 'custom':
-            return filenames.get(key, f'custom-{size[0]}x{size[1]}.png')
+            if key in filenames and filenames[key]:
+                return filenames[key]
+            return f'custom-{size[0]}x{size[1]}.png'
         
         return f'{icon_type}-{size[0]}x{size[1]}.png'
     
@@ -220,4 +299,20 @@ def generate_icon_set(image_path: str, options: ProcessingOptions,
                       output_dir: str) -> Dict:
     service = IconService(output_dir)
     image = load_image(image_path)
+    
+    if options.crop and options.crop.enabled:
+        crop = options.crop
+        image = crop_image(
+            image,
+            x=crop.x,
+            y=crop.y,
+            width=crop.width,
+            height=crop.height,
+            scale=crop.scale,
+            mode=crop.mode
+        )
+    
     return service.generate_icons(image, options, output_dir)
+
+def prepare_image_for_crop(image_path: str) -> Image.Image:
+    return load_image(image_path)

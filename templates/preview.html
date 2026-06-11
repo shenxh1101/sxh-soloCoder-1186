@@ -195,10 +195,10 @@
 <link rel="shortcut icon" type="image/x-icon" href="{{ file_info.filename }}">
 {% endif %}{% endfor %}{% for key, file_info in result.files.items() %}{% if file_info.type == 'apple-touch-icon' %}<link rel="apple-touch-icon" sizes="{{ file_info.size[0] }}x{{ file_info.size[1] }}" href="{{ file_info.filename }}">
 {% endif %}{% endfor %}{% for key, file_info in result.files.items() %}{% if file_info.type == 'android-chrome' %}<link rel="icon" type="image/png" sizes="{{ file_info.size[0] }}x{{ file_info.size[1] }}" href="{{ file_info.filename }}">
-{% endif %}{% endfor %}<meta name="theme-color" content="#ffffff">
+{% endif %}{% endfor %}<meta name="theme-color" content="{{ options.theme_color }}">
 <link rel="manifest" href="manifest.json">
 <meta name="msapplication-config" content="browserconfig.xml">
-<meta name="msapplication-TileColor" content="#ffffff">
+<meta name="msapplication-TileColor" content="{{ options.theme_color }}">
 {% for key, file_info in result.files.items() %}{% if file_info.type == 'mstile' %}<meta name="msapplication-TileImage" content="{{ file_info.filename }}">
 {% endif %}{% endfor %}</code></pre>
                     </div>
@@ -228,6 +228,7 @@
     <script src="{{ url_for('static', filename='js/preview.js') }}"></script>
     <script>
         var results = {{ results|tojson|safe }};
+        var options = {{ options|tojson|safe }};
     </script>
 </body>
 </html>
