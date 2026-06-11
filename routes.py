@@ -54,6 +54,11 @@ def parse_options_from_request(request) -> ProcessingOptions:
             size = parse_size_str(size_str)
             if size:
                 custom_sizes.append(size)
+    sizes_list = form.getlist('custom_sizes[]') if hasattr(form, 'getlist') else []
+    for size_str in sizes_list:
+        size = parse_size_str(size_str.strip())
+        if size and size not in custom_sizes:
+            custom_sizes.append(size)
     
     custom_filenames = {}
     for key in form:
@@ -625,6 +630,104 @@ def clear_cache():
     history_mgr.clear_all()
     
     return jsonify({'success': True, 'message': 'Cache and history cleared'})
+
+@main_bp.route('/api/history/detail/<record_id>')
+def history_detail(record_id):
+    history_mgr = get_history_manager()
+    record = history_mgr.get_by_id(record_id)
+    
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+    
+    options_dict = record.options
+    if hasattr(record, 'options') and not isinstance(record.options, dict):
+        options_dict = options_to_dict(record.options)
+    
+    return jsonify({
+        'success': True,
+        'record': {
+            'id': record.record_id,
+            'original_name': record.original_name,
+            'created_at': record.created_at,
+            'file_count': record.file_count,
+            'from_cache': record.from_cache,
+            'options': options_dict
+        }
+    })
+
+@main_bp.route('/api/reuse-template/<record_id>')
+def reuse_template(record_id):
+    history_mgr = get_history_manager()
+    record = history_mgr.get_by_id(record_id)
+    
+    if not record:
+        return jsonify({'error': 'Record not found'}), 404
+    
+    options_dict = record.options
+    if hasattr(record, 'options') and not isinstance(record.options, dict):
+        options_dict = options_to_dict(record.options)
+    
+    return jsonify({
+        'success': True,
+        'template': options_dict
+    })
+
+@main_bp.route('/download/filtered/<batch_id>', methods=['POST'])
+def download_filtered(batch_id):
+    batch_data = get_batch_results(batch_id)
+    if not batch_data:
+        abort(404)
+    
+    data = request.get_json() if request.is_json else request.form
+    selected_files = data.getlist('files') if hasattr(data, 'getlist') else data.get('files', [])
+    if isinstance(selected_files, str):
+        selected_files = [selected_files]
+    custom_name = data.get('zip_name', '').strip()
+    
+    if isinstance(data, dict) and 'files' in data and isinstance(data['files'], str):
+        selected_files = data['files'].split(',')
+    
+    include_manifest = data.get('include_manifest', 'true').lower() in ['true', '1', 'yes', 'on']
+    include_browserconfig = data.get('include_browserconfig', 'true').lower() in ['true', '1', 'yes', 'on']
+    include_html = data.get('include_html', 'true').lower() in ['true', '1', 'yes', 'on']
+    
+    options = batch_data.get('options')
+    options_dict = options if isinstance(options, dict) else (options_to_dict(options) if options else {})
+    app_name = options_dict.get('app_name', 'icons')
+    safe_app_name = ''.join(c for c in app_name if c.isalnum() or c in ('-', '_')).strip() or 'icons'
+    
+    if include_manifest:
+        selected_files.append('manifest.json')
+    if include_browserconfig:
+        selected_files.append('browserconfig.xml')
+    if include_html:
+        selected_files.append('favicon_snippet.html')
+    
+    selected_set = set(selected_files)
+    output_dirs = batch_data['output_dirs']
+    
+    zip_buffer = io.BytesIO()
+    import zipfile
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for original_name, source_dir in output_dirs.items():
+            prefix = original_name if len(output_dirs) > 1 else ''
+            for filename in sorted(os.listdir(source_dir)):
+                if filename in selected_set:
+                    filepath = os.path.join(source_dir, filename)
+                    arcname = os.path.join(prefix, filename) if prefix else filename
+                    zipf.write(filepath, arcname)
+    
+    zip_buffer.seek(0)
+    final_name = custom_name if custom_name else f"{safe_app_name}_icons.zip"
+    if not final_name.lower().endswith('.zip'):
+        final_name += '.zip'
+    
+    return send_file(
+        zip_buffer,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=final_name
+    )
 
 @main_bp.errorhandler(413)
 def too_large(e):

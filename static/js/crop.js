@@ -22,7 +22,10 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentHandle = null;
     let startX, startY;
     let startFrameX, startFrameY, startFrameW, startFrameH;
-    let scale = 1.0;
+    
+    let userZoom = 1.0;
+    let displayScale = 1.0;
+    
     let cropMode = 'cover';
     let lockRatio = true;
     let aspectRatio = 1;
@@ -32,15 +35,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function init() {
         updateScaleDisplay();
-        updatePreview();
-        initCropFrame();
         bindEvents();
+        initCropFrame();
+    }
+    
+    function computeDisplayScale() {
+        const imgRect = originalImage.getBoundingClientRect();
+        if (imageWidth > 0 && imgRect.width > 0) {
+            displayScale = imgRect.width / imageWidth;
+        } else {
+            displayScale = 1.0;
+        }
+        imageDisplayW = imageWidth * displayScale * userZoom;
+        imageDisplayH = imageHeight * displayScale * userZoom;
     }
     
     function initCropFrame() {
-        const imgRect = originalImage.getBoundingClientRect();
-        imageDisplayW = imgRect.width;
-        imageDisplayH = imgRect.height;
+        computeDisplayScale();
+        
+        originalImage.style.width = imageDisplayW + 'px';
+        originalImage.style.height = imageDisplayH + 'px';
         
         const minSize = Math.min(imageDisplayW, imageDisplayH) * 0.6;
         const frameSize = minSize;
@@ -53,14 +67,49 @@ document.addEventListener('DOMContentLoaded', function() {
         cropFrame.style.width = frameSize + 'px';
         cropFrame.style.height = frameSize + 'px';
         
-        cropWidthInput.value = Math.round(frameSize / scale);
-        cropHeightInput.value = Math.round(frameSize / scale);
+        const realW = Math.round(frameSize / (displayScale * userZoom));
+        const realH = Math.round(frameSize / (displayScale * userZoom));
+        cropWidthInput.value = realW;
+        cropHeightInput.value = realH;
+        
+        aspectRatio = realW / realH;
+        updatePreview();
     }
     
     function bindEvents() {
         scaleSlider.addEventListener('input', function() {
-            scale = parseFloat(this.value);
+            const oldZoom = userZoom;
+            userZoom = parseFloat(this.value);
+            const zoomRatio = userZoom / oldZoom;
             updateScaleDisplay();
+            
+            const oldLeft = parseFloat(cropFrame.style.left) || 0;
+            const oldTop = parseFloat(cropFrame.style.top) || 0;
+            const oldW = parseFloat(cropFrame.style.width) || 0;
+            const oldH = parseFloat(cropFrame.style.height) || 0;
+            
+            computeDisplayScale();
+            originalImage.style.width = imageDisplayW + 'px';
+            originalImage.style.height = imageDisplayH + 'px';
+            
+            const centerX = oldLeft + oldW / 2;
+            const centerY = oldTop + oldH / 2;
+            const newW = oldW * zoomRatio;
+            const newH = lockRatio ? newW / aspectRatio : oldH * zoomRatio;
+            const newX = centerX * zoomRatio - newW / 2;
+            const newY = centerY * zoomRatio - newH / 2;
+            
+            const boundedX = Math.max(0, Math.min(newX, imageDisplayW - newW));
+            const boundedY = Math.max(0, Math.min(newY, imageDisplayH - newH));
+            const boundedW = Math.min(newW, imageDisplayW - boundedX);
+            const boundedH = Math.min(newH, imageDisplayH - boundedY);
+            
+            cropFrame.style.left = boundedX + 'px';
+            cropFrame.style.top = boundedY + 'px';
+            cropFrame.style.width = boundedW + 'px';
+            cropFrame.style.height = boundedH + 'px';
+            
+            updateInputsFromFrame();
             updatePreview();
         });
         
@@ -71,9 +120,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (lockRatio) {
                 const newH = Math.round(w / aspectRatio);
                 cropHeightInput.value = newH;
-                updateFrameFromInputs(w, newH);
+                updateFrameFromRealInputs(w, newH);
             } else {
-                updateFrameFromInputs(w, h);
+                updateFrameFromRealInputs(w, h);
             }
             updatePreview();
         });
@@ -85,9 +134,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (lockRatio) {
                 const newW = Math.round(h * aspectRatio);
                 cropWidthInput.value = newW;
-                updateFrameFromInputs(newW, h);
+                updateFrameFromRealInputs(newW, h);
             } else {
-                updateFrameFromInputs(w, h);
+                updateFrameFromRealInputs(w, h);
             }
             updatePreview();
         });
@@ -97,7 +146,9 @@ document.addEventListener('DOMContentLoaded', function() {
             this.classList.toggle('active', lockRatio);
             this.textContent = lockRatio ? '🔒' : '🔓';
             if (lockRatio) {
-                aspectRatio = parseInt(cropWidthInput.value) / parseInt(cropHeightInput.value);
+                const w = parseInt(cropWidthInput.value) || 16;
+                const h = parseInt(cropHeightInput.value) || 16;
+                aspectRatio = w / h;
             }
         });
         
@@ -122,7 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const currentW = parseInt(cropWidthInput.value) || 512;
                 const newH = Math.round(currentW / aspectRatio);
                 cropHeightInput.value = newH;
-                updateFrameFromInputs(currentW, newH);
+                updateFrameFromRealInputs(currentW, newH);
                 updatePreview();
             });
         });
@@ -235,27 +286,24 @@ document.addEventListener('DOMContentLoaded', function() {
         
         window.addEventListener('resize', function() {
             initCropFrame();
-            updatePreview();
         });
         
         if (originalImage.complete) {
             initCropFrame();
-            updatePreview();
         } else {
             originalImage.addEventListener('load', function() {
                 initCropFrame();
-                updatePreview();
             });
         }
     }
     
     function updateScaleDisplay() {
-        scaleValue.textContent = Math.round(scale * 100) + '%';
+        scaleValue.textContent = Math.round(userZoom * 100) + '%';
     }
     
-    function updateFrameFromInputs(w, h) {
-        const displayW = w * scale;
-        const displayH = h * scale;
+    function updateFrameFromRealInputs(realW, realH) {
+        const displayW = realW * displayScale * userZoom;
+        const displayH = realH * displayScale * userZoom;
         
         const currentLeft = parseFloat(cropFrame.style.left) || 0;
         const currentTop = parseFloat(cropFrame.style.top) || 0;
@@ -270,13 +318,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateInputsFromFrame() {
-        const w = Math.round(parseFloat(cropFrame.style.width) / scale);
-        const h = Math.round(parseFloat(cropFrame.style.height) / scale);
-        cropWidthInput.value = w;
-        cropHeightInput.value = h;
-    }
-    
-    function getCropParams() {
+        const totalScale = displayScale * userZoom;
         const frameLeft = parseFloat(cropFrame.style.left) || 0;
         const frameTop = parseFloat(cropFrame.style.top) || 0;
         const frameW = parseFloat(cropFrame.style.width) || 0;
@@ -287,17 +329,39 @@ document.addEventListener('DOMContentLoaded', function() {
         const offsetX = imgRect.left - canvasRect.left;
         const offsetY = imgRect.top - canvasRect.top;
         
-        const actualX = Math.round((frameLeft - offsetX) / scale);
-        const actualY = Math.round((frameTop - offsetY) / scale);
-        const actualW = Math.round(frameW / scale);
-        const actualH = Math.round(frameH / scale);
+        const realW = Math.max(1, Math.round(frameW / totalScale));
+        const realH = Math.max(1, Math.round(frameH / totalScale));
+        
+        cropWidthInput.value = realW;
+        cropHeightInput.value = realH;
+        aspectRatio = realW / realH;
+    }
+    
+    function getCropParams() {
+        computeDisplayScale();
+        const totalScale = displayScale * userZoom;
+        
+        const frameLeft = parseFloat(cropFrame.style.left) || 0;
+        const frameTop = parseFloat(cropFrame.style.top) || 0;
+        const frameW = parseFloat(cropFrame.style.width) || 0;
+        const frameH = parseFloat(cropFrame.style.height) || 0;
+        
+        const imgRect = originalImage.getBoundingClientRect();
+        const canvasRect = cropCanvas.getBoundingClientRect();
+        const offsetX = imgRect.left - canvasRect.left;
+        const offsetY = imgRect.top - canvasRect.top;
+        
+        const realX = Math.max(0, Math.round((frameLeft - offsetX) / totalScale));
+        const realY = Math.max(0, Math.round((frameTop - offsetY) / totalScale));
+        const realW = Math.max(1, Math.round(frameW / totalScale));
+        const realH = Math.max(1, Math.round(frameH / totalScale));
         
         return {
-            x: Math.max(0, actualX),
-            y: Math.max(0, actualY),
-            width: Math.max(1, actualW),
-            height: Math.max(1, actualH),
-            scale: scale,
+            x: Math.min(realX, Math.max(0, imageWidth - realW)),
+            y: Math.min(realY, Math.max(0, imageHeight - realH)),
+            width: Math.min(realW, imageWidth),
+            height: Math.min(realH, imageHeight),
+            scale: 1.0,
             mode: cropMode
         };
     }
@@ -305,7 +369,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updatePreview() {
         const params = getCropParams();
         
-        const previewUrl = `/api/crop-image/${uploadId}?x=${params.x}&y=${params.y}&width=${params.width}&height=${params.height}&scale=${params.scale}&mode=${params.mode}&preview_size=256`;
+        const previewUrl = `/api/crop-image/${uploadId}?x=${params.x}&y=${params.y}&width=${params.width}&height=${params.height}&scale=1.0&mode=${params.mode}&preview_size=256`;
         
         previewSquare.src = previewUrl;
         preview16.src = previewUrl;
@@ -324,7 +388,7 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('crop_y', params.y);
         formData.append('crop_width', params.width);
         formData.append('crop_height', params.height);
-        formData.append('crop_scale', params.scale);
+        formData.append('crop_scale', '1.0');
         formData.append('crop_mode', params.mode);
         
         const url = `/generate`;

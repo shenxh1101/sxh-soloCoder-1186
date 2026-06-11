@@ -35,9 +35,20 @@
                         </div>
                     </div>
                     <div class="history-actions">
+                        <button class="btn-small btn-expand" onclick="toggleDetail('{{ record.id }}', this)">⚙️ 参数</button>
                         <a href="{{ url_for('main.history_preview', record_id=record.id) }}" class="btn-view">👁️ 预览</a>
                         <a href="{{ url_for('main.history_download', record_id=record.id) }}" class="btn-download">📦 下载</a>
                         <button class="btn-delete" onclick="deleteRecord('{{ record.id }}', this)">🗑️ 删除</button>
+                    </div>
+                </div>
+                <div class="params-detail-wrapper" id="detail_{{ record.id }}" style="display:none;">
+                    <div class="params-detail-section">
+                        <h4>
+                            <span>📊 生成参数</span>
+                            <button class="reuse-btn" onclick="reuseTemplate('{{ record.id }}')">♻️ 一键套用并上传</button>
+                        </h4>
+                        <div class="params-loading" id="loading_{{ record.id }}">加载中...</div>
+                        <div class="params-grid" id="params_{{ record.id }}" style="display:none;"></div>
                     </div>
                 </div>
                 {% endfor %}
@@ -56,6 +67,125 @@
     </div>
 
     <script>
+        const loadedDetails = {};
+
+        function toggleDetail(recordId, btn) {
+            const wrapper = document.getElementById('detail_' + recordId);
+            const isOpen = wrapper.style.display === 'block';
+            
+            if (isOpen) {
+                wrapper.style.display = 'none';
+                btn.textContent = '⚙️ 参数';
+            } else {
+                wrapper.style.display = 'block';
+                btn.textContent = '▼ 收起';
+                if (!loadedDetails[recordId]) {
+                    loadDetail(recordId);
+                }
+            }
+        }
+
+        function loadDetail(recordId) {
+            const loading = document.getElementById('loading_' + recordId);
+            const paramsEl = document.getElementById('params_' + recordId);
+            loading.style.display = 'block';
+            paramsEl.style.display = 'none';
+
+            fetch('/api/history/detail/' + recordId)
+                .then(r => r.json())
+                .then(data => {
+                    loading.style.display = 'none';
+                    if (data.success) {
+                        renderParams(recordId, data.record.options);
+                        loadedDetails[recordId] = true;
+                    } else {
+                        loading.textContent = '加载失败';
+                    }
+                })
+                .catch(e => {
+                    loading.textContent = '加载失败: ' + e.message;
+                });
+        }
+
+        function renderParams(recordId, options) {
+            const paramsEl = document.getElementById('params_' + recordId);
+            if (!options) {
+                paramsEl.innerHTML = '<div class="empty-hint">无参数记录</div>';
+                paramsEl.style.display = 'grid';
+                return;
+            }
+
+            const labels = {
+                'app_name': '应用名称',
+                'app_short_name': '短名称',
+                'theme_color': '主题颜色',
+                'background_color_manifest': 'Manifest背景',
+                'corner_radius': '圆角半径(px)',
+                'background_color': '背景颜色',
+                'shadow': '启用阴影',
+                'shadow_blur': '阴影模糊(px)',
+                'shadow_offset': '阴影偏移',
+                'shadow_color': '阴影颜色',
+                'custom_sizes': '自定义尺寸',
+                'custom_filenames': '自定义文件名',
+                'crop': '裁剪设置'
+            };
+
+            let html = '';
+            Object.keys(labels).forEach(key => {
+                if (options[key] === undefined) return;
+                let val = options[key];
+                let displayVal = val;
+                
+                if (key === 'shadow') {
+                    displayVal = val ? '✅ 是' : '❌ 否';
+                } else if (key === 'shadow_offset' && Array.isArray(val)) {
+                    displayVal = val[0] + ', ' + val[1];
+                } else if (key === 'custom_sizes' && Array.isArray(val)) {
+                    displayVal = val.map(s => Array.isArray(s) ? s[0]+'×'+(s[1]||s[0]) : s).join(', ') || '无';
+                } else if (key === 'custom_filenames') {
+                    displayVal = Object.keys(val).length + '项配置';
+                } else if (key === 'crop' && val) {
+                    if (val.enabled) {
+                        displayVal = `启用: ${val.width}×${val.height} @(${val.x},${val.y})`;
+                    } else {
+                        displayVal = '未启用';
+                    }
+                } else if (val === null || val === '') {
+                    displayVal = '—';
+                }
+
+                html += `
+                    <div class="param-item">
+                        <span class="param-label">${labels[key]}</span>
+                        <span class="param-value">${displayVal}</span>
+                    </div>
+                `;
+            });
+
+            paramsEl.innerHTML = html || '<div class="empty-hint">无参数记录</div>';
+            paramsEl.style.display = 'grid';
+        }
+
+        function reuseTemplate(recordId) {
+            if (!confirm('将使用此任务的所有参数（尺寸、文件名、圆角、阴影、应用信息等）进入上传页面，继续吗？')) {
+                return;
+            }
+            fetch('/api/reuse-template/' + recordId)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        sessionStorage.setItem('reuseTemplate', JSON.stringify(data.template));
+                        window.location.href = '/';
+                    } else {
+                        alert('获取参数失败: ' + (data.error || '未知错误'));
+                    }
+                })
+                .catch(e => {
+                    alert('错误: ' + e.message);
+                });
+        }
+
         function deleteRecord(recordId, btn) {
             if (!confirm('确定要删除这条记录吗？')) {
                 return;
@@ -68,8 +198,12 @@
             .then(data => {
                 if (data.success) {
                     const item = btn.closest('.history-item');
+                    const next = item.nextElementSibling;
                     item.style.opacity = '0';
                     item.style.transform = 'translateX(50px)';
+                    if (next && next.classList.contains('params-detail-wrapper')) {
+                        next.remove();
+                    }
                     setTimeout(() => {
                         item.remove();
                         if (document.querySelectorAll('.history-item').length === 0) {

@@ -17,6 +17,56 @@
             </div>
         </header>
 
+        <div class="download-filter-section" id="downloadFilter">
+            <h4>📦 自定义下载</h4>
+            <div class="filter-groups">
+                <div class="filter-group" data-group="favicon">
+                    <div class="filter-group-title">Favicon</div>
+                    <div id="filterFavicon"></div>
+                </div>
+                <div class="filter-group" data-group="apple">
+                    <div class="filter-group-title">Apple Touch 图标</div>
+                    <div id="filterApple"></div>
+                </div>
+                <div class="filter-group" data-group="android">
+                    <div class="filter-group-title">Android Chrome</div>
+                    <div id="filterAndroid"></div>
+                </div>
+                <div class="filter-group" data-group="mstile">
+                    <div class="filter-group-title">Windows 磁贴</div>
+                    <div id="filterMstile"></div>
+                </div>
+                <div class="filter-group" data-group="custom">
+                    <div class="filter-group-title">自定义尺寸</div>
+                    <div id="filterCustom"></div>
+                </div>
+            </div>
+            <div class="filter-actions">
+                <div class="filter-quick-btns">
+                    <button type="button" class="quick-btn" onclick="selectPreset('all')">全选</button>
+                    <button type="button" class="quick-btn" onclick="selectPreset('favicon')">仅Favicon</button>
+                    <button type="button" class="quick-btn" onclick="selectPreset('mobile')">移动端</button>
+                    <button type="button" class="quick-btn" onclick="selectPreset('none')">全不选</button>
+                </div>
+                <div class="filter-name-input">
+                    <label>ZIP 名称:</label>
+                    <input type="text" id="zipName" placeholder="{{ options.app_name or 'icons' }}_icons.zip">
+                    <button type="button" class="btn-primary" style="padding:6px 14px;font-size:12px;" onclick="downloadFiltered()">📦 下载所选</button>
+                </div>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:15px;">
+                <label class="filter-item" style="margin:0;">
+                    <input type="checkbox" id="includeManifest" checked> manifest.json
+                </label>
+                <label class="filter-item" style="margin:0;">
+                    <input type="checkbox" id="includeBrowserconfig" checked> browserconfig.xml
+                </label>
+                <label class="filter-item" style="margin:0;">
+                    <input type="checkbox" id="includeHtml" checked> HTML 片段
+                </label>
+            </div>
+        </div>
+
         {% if is_batch %}
         <div class="batch-tabs">
             {% for result in results %}

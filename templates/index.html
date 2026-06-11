@@ -109,48 +109,43 @@
                 </div>
 
                 <div class="option-group">
-                    <h3>高级选项</h3>
-                    <div class="option-item">
-                        <label for="customSizes">自定义尺寸</label>
-                        <input type="text" id="customSizes" name="custom_sizes" placeholder="例如: 64, 128x256, 256">
-                        <p class="hint">多个尺寸用逗号分隔，如: 64, 128x256, 512</p>
+                    <div class="option-group-header">
+                        <h3>📐 尺寸管理</h3>
+                        <button class="toggle-btn" id="toggleSizes">展开</button>
                     </div>
-                    
+                    <div class="sizes-options" id="sizesOptions" style="display: none;">
+                        <div class="standard-sizes-list">
+                            <h4>标准尺寸</h4>
+                            <div class="size-list" id="standardSizeList"></div>
+                        </div>
+                        <div class="custom-sizes-section">
+                            <div class="custom-sizes-header">
+                                <h4>自定义尺寸</h4>
+                                <button type="button" class="btn-small" id="addCustomSizeBtn">+ 添加尺寸</button>
+                            </div>
+                            <div class="size-list" id="customSizeList"></div>
+                            <div class="add-size-row" id="addSizeRow" style="display: none;">
+                                <div class="size-inputs">
+                                    <input type="number" id="newSizeW" min="1" max="4096" placeholder="宽">
+                                    <span class="x-sep">×</span>
+                                    <input type="number" id="newSizeH" min="1" max="4096" placeholder="高">
+                                    <input type="checkbox" id="newSizeSquare" checked title="正方形">
+                                </div>
+                                <button type="button" class="btn-small btn-confirm" id="confirmAddSize">✓ 确认</button>
+                                <button type="button" class="btn-small btn-cancel" id="cancelAddSize">✗ 取消</button>
+                            </div>
+                        </div>
+                        <p class="hint">点击 ↑↓ 调整顺序，点击 ✎ 修改文件名，点击 × 删除自定义尺寸。</p>
+                    </div>
+                </div>
+
+                <div class="option-group">
+                    <h3>高级选项</h3>
                     <div class="option-item">
                         <label class="checkbox-inline">
                             <input type="checkbox" id="enableCrop" checked>
                             上传后进入裁剪编辑
                         </label>
-                    </div>
-                </div>
-
-                <div class="option-group">
-                    <div class="option-group-header">
-                        <h3>📝 输出文件名</h3>
-                        <button class="toggle-btn" id="toggleFilenames">展开</button>
-                    </div>
-                    <div class="filename-options" id="filenameOptions" style="display: none;">
-                        <div class="filename-item">
-                            <label>Favicon</label>
-                            <input type="text" name="filename_favicon" value="favicon.ico" placeholder="favicon.ico">
-                        </div>
-                        <div class="filename-item">
-                            <label>Apple Touch (180px)</label>
-                            <input type="text" name="filename_apple-touch-icon-180x180" value="apple-touch-icon.png" placeholder="apple-touch-icon.png">
-                        </div>
-                        <div class="filename-item">
-                            <label>Android Chrome (192px)</label>
-                            <input type="text" name="filename_android-chrome-192x192" value="android-chrome-192x192.png" placeholder="android-chrome-192x192.png">
-                        </div>
-                        <div class="filename-item">
-                            <label>Android Chrome (512px)</label>
-                            <input type="text" name="filename_android-chrome-512x512" value="android-chrome-512x512.png" placeholder="android-chrome-512x512.png">
-                        </div>
-                        <div class="filename-item">
-                            <label>Windows 磁贴 (150px)</label>
-                            <input type="text" name="filename_mstile-150x150" value="mstile-150x150.png" placeholder="mstile-150x150.png">
-                        </div>
-                        <p class="hint">留空则使用默认文件名。自定义尺寸的文件名可在生成后预览页修改。</p>
                     </div>
                 </div>
 

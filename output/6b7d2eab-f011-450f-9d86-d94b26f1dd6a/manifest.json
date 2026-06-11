@@ -1,0 +1,21 @@
+{
+  "name": "完整功能测试",
+  "short_name": "功能",
+  "icons": [
+    {
+      "src": "android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "theme_color": "#06b6d4",
+  "background_color": "#06b6d4",
+  "display": "standalone"
+}
