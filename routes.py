@@ -159,6 +159,31 @@ def history():
     records = history_mgr.get_all()
     return render_template('history.html', records=records)
 
+@main_bp.route('/compare')
+def compare_page():
+    ids_str = request.args.get('ids', '')
+    ids = [x.strip() for x in ids_str.split(',') if x.strip()]
+    history_mgr = get_history_manager()
+    records = []
+    for rid in ids:
+        rec = history_mgr.get_by_id(rid)
+        if rec:
+            rec_dict = {
+                'id': rec.id,
+                'original_name': rec.original_name,
+                'created_at': rec.created_at,
+                'cached': rec.cached,
+                'file_count': rec.file_count,
+                'options': rec.options if isinstance(rec.options, dict) else {},
+                'files_list': []
+            }
+            cache_mgr = get_cache_manager()
+            cached = cache_mgr.get(rec.cache_key)
+            if cached and 'files' in cached:
+                rec_dict['files_list'] = sorted([f.get('filename', k) for k, f in cached['files'].items()])
+            records.append(rec_dict)
+    return render_template('compare.html', records=records)
+
 @main_bp.route('/upload', methods=['POST'])
 def upload():
     if 'files' not in request.files:
@@ -262,7 +287,11 @@ def crop_image_api(upload_id):
     if not upload_data:
         abort(404)
     
-    first_image = upload_data['image_paths'][0]
+    idx = int(request.args.get('index', 0))
+    image_paths = upload_data['image_paths']
+    if idx < 0 or idx >= len(image_paths):
+        idx = 0
+    target_image = image_paths[idx]
     
     x = int(request.args.get('x', 0))
     y = int(request.args.get('y', 0))
@@ -272,7 +301,7 @@ def crop_image_api(upload_id):
     mode = request.args.get('mode', 'cover')
     preview_size = int(request.args.get('preview_size', 200))
     
-    img = prepare_image_for_crop(first_image)
+    img = prepare_image_for_crop(target_image)
     
     if width > 0 and height > 0:
         cropped = crop_image(img, x, y, width, height, scale, mode)
@@ -295,9 +324,13 @@ def original_image_api(upload_id):
     if not upload_data:
         abort(404)
     
-    first_image = upload_data['image_paths'][0]
+    idx = int(request.args.get('index', 0))
+    image_paths = upload_data['image_paths']
+    if idx < 0 or idx >= len(image_paths):
+        idx = 0
+    target_image = image_paths[idx]
     
-    img = Image.open(first_image)
+    img = Image.open(target_image)
     max_size = 800
     if img.size[0] > max_size or img.size[1] > max_size:
         img.thumbnail((max_size, max_size), Image.LANCZOS)
@@ -307,6 +340,35 @@ def original_image_api(upload_id):
     buf.seek(0)
     
     return send_file(buf, mimetype='image/png')
+
+@main_bp.route('/api/upload-info/<upload_id>')
+def upload_info_api(upload_id):
+    upload_sessions = current_app.config.get('UPLOAD_SESSIONS', {})
+    upload_data = upload_sessions.get(upload_id)
+    
+    if not upload_data:
+        return jsonify({'error': 'Upload session not found'}), 404
+    
+    images = []
+    for i, p in enumerate(upload_data['image_paths']):
+        try:
+            with Image.open(p) as img:
+                w, h = img.size
+            images.append({
+                'index': i,
+                'name': os.path.basename(p),
+                'width': w,
+                'height': h
+            })
+        except:
+            pass
+    
+    return jsonify({
+        'success': True,
+        'upload_id': upload_id,
+        'image_count': len(images),
+        'images': images
+    })
 
 @main_bp.route('/generate', methods=['POST'])
 def generate():
@@ -321,24 +383,14 @@ def generate():
     
     options = parse_options_from_request(request)
     base_options = upload_data.get('options')
+    shared_options = None
+
     if base_options:
         if hasattr(base_options, '__dict__'):
-            if options.crop and options.crop.enabled:
-                base_options.crop = options.crop
-            options = base_options
+            shared_options = base_options
         elif isinstance(base_options, dict):
-            if options.crop and options.crop.enabled:
-                base_options['crop'] = {
-                    'enabled': options.crop.enabled,
-                    'x': options.crop.x,
-                    'y': options.crop.y,
-                    'width': options.crop.width,
-                    'height': options.crop.height,
-                    'scale': options.crop.scale,
-                    'mode': options.crop.mode
-                }
             from icon_generator import ProcessingOptions, CropOptions
-            opts = ProcessingOptions(
+            shared_options = ProcessingOptions(
                 corner_radius=base_options.get('corner_radius', 0),
                 background_color=base_options.get('background_color'),
                 shadow=base_options.get('shadow', False),
@@ -353,7 +405,51 @@ def generate():
                 background_color_manifest=base_options.get('background_color_manifest', '#ffffff'),
                 crop=CropOptions(**base_options.get('crop', {})) if base_options.get('crop') else CropOptions()
             )
-            options = opts
+
+    per_image_crops = None
+    crops_raw = data.get('crops')
+    if crops_raw:
+        try:
+            if isinstance(crops_raw, str):
+                per_image_crops = json.loads(crops_raw)
+            elif isinstance(crops_raw, list):
+                per_image_crops = crops_raw
+        except:
+            per_image_crops = None
+
+    def make_options_for_image(idx, fallback_crop):
+        from icon_generator import ProcessingOptions, CropOptions
+        src = shared_options or options
+        if per_image_crops and isinstance(per_image_crops, list) and idx < len(per_image_crops) and per_image_crops[idx]:
+            c = per_image_crops[idx]
+            crop = CropOptions(
+                enabled=bool(c.get('enabled', True)),
+                x=int(c.get('x', 0)),
+                y=int(c.get('y', 0)),
+                width=int(c.get('width', 0)),
+                height=int(c.get('height', 0)),
+                scale=float(c.get('scale', 1.0)),
+                mode=c.get('mode', 'cover')
+            )
+        else:
+            crop = fallback_crop
+        if hasattr(src, '__dict__'):
+            return ProcessingOptions(
+                corner_radius=src.corner_radius,
+                background_color=src.background_color,
+                shadow=src.shadow,
+                shadow_blur=src.shadow_blur,
+                shadow_offset=src.shadow_offset,
+                shadow_color=src.shadow_color,
+                custom_sizes=list(src.custom_sizes),
+                custom_filenames=dict(src.custom_filenames),
+                app_name=src.app_name,
+                app_short_name=src.app_short_name,
+                theme_color=src.theme_color,
+                background_color_manifest=src.background_color_manifest,
+                crop=crop
+            )
+        return ProcessingOptions(crop=crop) if not crop.enabled else ProcessingOptions(crop=crop)
     
     cache_mgr = get_cache_manager()
     history_mgr = get_history_manager()
@@ -362,12 +458,14 @@ def generate():
     results = []
     temp_output_dirs = {}
     
-    for image_path in image_paths:
+    for i, image_path in enumerate(image_paths):
         try:
+            img_opts = make_options_for_image(i, options.crop)
+            
             with open(image_path, 'rb') as f:
                 file_content = f.read()
             file_hash = get_file_hash(file_content)
-            cache_key = cache_mgr.get_cache_key(file_hash, options)
+            cache_key = cache_mgr.get_cache_key(file_hash, img_opts)
             original_name = os.path.basename(image_path)
             
             cached = cache_mgr.get(cache_key)
@@ -388,7 +486,7 @@ def generate():
                     original_name=original_name,
                     file_hash=file_hash,
                     cache_key=cache_key,
-                    options=options_to_dict(options),
+                    options=options_to_dict(img_opts),
                     cached=True,
                     file_count=len(cached['files'])
                 )
@@ -398,7 +496,7 @@ def generate():
             output_dir = os.path.join(current_app.config['OUTPUT_FOLDER'], str(uuid.uuid4()))
             os.makedirs(output_dir, exist_ok=True)
             
-            generated_files = generate_icon_set(image_path, options, output_dir)
+            generated_files = generate_icon_set(image_path, img_opts, output_dir)
             
             cache_mgr.set(cache_key, generated_files, output_dir, original_name)
             
@@ -428,7 +526,7 @@ def generate():
                 original_name=original_name,
                 file_hash=file_hash,
                 cache_key=cache_key,
-                options=options_to_dict(options),
+                options=options_to_dict(img_opts),
                 cached=False,
                 file_count=len(files_info)
             )
@@ -452,10 +550,11 @@ def generate():
         del upload_sessions[upload_id]
     
     batch_id = str(uuid.uuid4())
+    final_options = shared_options or options
     set_batch_results(batch_id, {
         'results': results,
         'output_dirs': temp_output_dirs,
-        'options': options
+        'options': final_options
     })
     
     return jsonify({
@@ -646,11 +745,13 @@ def history_detail(record_id):
     return jsonify({
         'success': True,
         'record': {
-            'id': record.record_id,
+            'id': record.id,
             'original_name': record.original_name,
             'created_at': record.created_at,
             'file_count': record.file_count,
-            'from_cache': record.from_cache,
+            'from_cache': record.cached,
+            'cache_key': record.cache_key,
+            'file_hash': record.file_hash,
             'options': options_dict
         }
     })
@@ -696,14 +797,16 @@ def download_filtered(batch_id):
     app_name = options_dict.get('app_name', 'icons')
     safe_app_name = ''.join(c for c in app_name if c.isalnum() or c in ('-', '_')).strip() or 'icons'
     
+    extra_files = []
     if include_manifest:
-        selected_files.append('manifest.json')
+        extra_files.append('manifest.json')
     if include_browserconfig:
-        selected_files.append('browserconfig.xml')
+        extra_files.append('browserconfig.xml')
     if include_html:
-        selected_files.append('favicon_snippet.html')
+        extra_files.append('icons.html')
     
     selected_set = set(selected_files)
+    selected_set.update(extra_files)
     output_dirs = batch_data['output_dirs']
     
     zip_buffer = io.BytesIO()
@@ -711,11 +814,14 @@ def download_filtered(batch_id):
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for original_name, source_dir in output_dirs.items():
             prefix = original_name if len(output_dirs) > 1 else ''
+            if not os.path.exists(source_dir):
+                continue
             for filename in sorted(os.listdir(source_dir)):
                 if filename in selected_set:
                     filepath = os.path.join(source_dir, filename)
-                    arcname = os.path.join(prefix, filename) if prefix else filename
-                    zipf.write(filepath, arcname)
+                    if os.path.isfile(filepath):
+                        arcname = os.path.join(prefix, filename) if prefix else filename
+                        zipf.write(filepath, arcname)
     
     zip_buffer.seek(0)
     final_name = custom_name if custom_name else f"{safe_app_name}_icons.zip"

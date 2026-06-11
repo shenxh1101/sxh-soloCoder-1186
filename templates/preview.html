@@ -54,7 +54,7 @@
                     <button type="button" class="btn-primary" style="padding:6px 14px;font-size:12px;" onclick="downloadFiltered()">📦 下载所选</button>
                 </div>
             </div>
-            <div style="margin-top:10px;display:flex;gap:15px;">
+            <div style="margin-top:10px;display:flex;gap:15px;flex-wrap:wrap;">
                 <label class="filter-item" style="margin:0;">
                     <input type="checkbox" id="includeManifest" checked> manifest.json
                 </label>
@@ -64,6 +64,19 @@
                 <label class="filter-item" style="margin:0;">
                     <input type="checkbox" id="includeHtml" checked> HTML 片段
                 </label>
+            </div>
+
+            <div class="preset-section">
+                <div class="preset-row">
+                    <label>下载预设:</label>
+                    <select class="preset-select" id="presetSelect" onchange="applyPreset(this.value)">
+                        <option value="">-- 选择预设 --</option>
+                    </select>
+                    <div class="preset-btns">
+                        <button type="button" class="preset-btn save" onclick="saveCurrentAsPreset()">💾 保存当前</button>
+                        <button type="button" class="preset-btn delete" onclick="deleteSelectedPreset()">🗑️ 删除</button>
+                    </div>
+                </div>
             </div>
         </div>
 

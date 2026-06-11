@@ -1,5 +1,40 @@
 [
   {
+    "id": "b56946ae-98d4-41b5-98de-bda695a417ff",
+    "original_name": "dl_test.png",
+    "file_hash": "a7d13da221c05ba216d9b0b58c8492f87335cd179ae7d80117aebb9ca2f37ea9",
+    "cache_key": "a7d13da221c05ba216d9b0b58c8492f87335cd179ae7d80117aebb9ca2f37ea9_166045a4db5fea5433bcfb3b1414c772",
+    "options": {
+      "corner_radius": 0,
+      "background_color": null,
+      "shadow": false,
+      "shadow_blur": 10,
+      "shadow_offset": [
+        0,
+        4
+      ],
+      "shadow_color": "rgba(0, 0, 0, 0.3)",
+      "custom_sizes": [],
+      "custom_filenames": {},
+      "app_name": "My App",
+      "app_short_name": "App",
+      "theme_color": "#ffffff",
+      "background_color_manifest": "#ffffff",
+      "crop": {
+        "enabled": false,
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "scale": 1.0,
+        "mode": "cover"
+      }
+    },
+    "created_at": "2026-06-12 00:18:06",
+    "cached": false,
+    "file_count": 8
+  },
+  {
     "id": "d322e5a3-e042-458d-8b29-f1fd53b126d0",
     "original_name": "test_icon.png",
     "file_hash": "564d426e57d1a920b610eff09ea3d029600d68c47e1571e3ccdf4f5aea04f42c",

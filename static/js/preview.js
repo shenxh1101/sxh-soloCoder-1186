@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', function() {
         zipInput.placeholder = `${safeAppName}_icons.zip`;
     }
 
+    initPresets();
     initDownloadFilter();
 
     if (typeof results !== 'undefined' && Array.isArray(results)) {
@@ -87,6 +88,159 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+const DEFAULT_PRESETS = [
+    {
+        id: '__favicon_only',
+        name: '🔖 仅 Favicon',
+        builtin: true,
+        files: ['favicon.ico', 'manifest.json', 'browserconfig.xml', 'icons.html'],
+        include: { manifest: true, browserconfig: true, html: true },
+        pattern: 'favicon'
+    },
+    {
+        id: '__mobile_only',
+        name: '📱 仅移动端图标',
+        builtin: true,
+        files: [],
+        include: { manifest: true, browserconfig: true, html: true },
+        pattern: 'mobile'
+    },
+    {
+        id: '__pwa_full',
+        name: '🌐 PWA 全套（推荐）',
+        builtin: true,
+        files: [],
+        include: { manifest: true, browserconfig: true, html: true },
+        pattern: 'all'
+    },
+    {
+        id: '__no_config',
+        name: '🖼️ 纯图片（无配置）',
+        builtin: true,
+        files: [],
+        include: { manifest: false, browserconfig: false, html: false },
+        pattern: 'all'
+    }
+];
+
+function getPresets() {
+    try {
+        const raw = localStorage.getItem('favicon_presets');
+        const userPresets = raw ? JSON.parse(raw) : [];
+        return DEFAULT_PRESETS.concat(userPresets);
+    } catch (e) {
+        return DEFAULT_PRESETS;
+    }
+}
+
+function saveUserPresets(presets) {
+    localStorage.setItem('favicon_presets', JSON.stringify(presets));
+}
+
+function initPresets() {
+    const sel = document.getElementById('presetSelect');
+    if (!sel) return;
+    const presets = getPresets();
+    sel.innerHTML = '<option value="">-- 选择预设 --</option>';
+    presets.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = (p.builtin ? '⭐ ' : '💾 ') + p.name;
+        sel.appendChild(opt);
+    });
+}
+
+function collectCurrentSelection() {
+    const boxes = document.querySelectorAll('#downloadFilter input[type="checkbox"][data-filename]');
+    const files = Array.from(boxes).filter(cb => cb.checked).map(cb => cb.dataset.filename);
+    return {
+        files,
+        include: {
+            manifest: document.getElementById('includeManifest').checked,
+            browserconfig: document.getElementById('includeBrowserconfig').checked,
+            html: document.getElementById('includeHtml').checked
+        }
+    };
+}
+
+function applyPreset(id) {
+    if (!id) return;
+    const presets = getPresets();
+    const preset = presets.find(p => p.id === id);
+    if (!preset) return;
+
+    const boxes = document.querySelectorAll('#downloadFilter input[type="checkbox"][data-filename]');
+
+    if (preset.builtin && preset.pattern) {
+        selectPreset(preset.pattern);
+    } else if (preset.files && preset.files.length > 0) {
+        const fnSet = new Set(preset.files);
+        boxes.forEach(cb => {
+            cb.checked = fnSet.has(cb.dataset.filename);
+        });
+    } else {
+        selectPreset('all');
+    }
+
+    if (preset.include) {
+        const m = document.getElementById('includeManifest');
+        const b = document.getElementById('includeBrowserconfig');
+        const h = document.getElementById('includeHtml');
+        if (m) m.checked = !!preset.include.manifest;
+        if (b) b.checked = !!preset.include.browserconfig;
+        if (h) h.checked = !!preset.include.html;
+    }
+
+    document.getElementById('presetSelect').value = '';
+}
+
+function saveCurrentAsPreset() {
+    const name = prompt('请输入预设名称（例如：我的 PWA 图标集）：');
+    if (!name || !name.trim()) return;
+    const sel = collectCurrentSelection();
+    const userPresets = (function () {
+        try {
+            const raw = localStorage.getItem('favicon_presets');
+            return raw ? JSON.parse(raw) : [];
+        } catch (e) { return []; }
+    })();
+    userPresets.push({
+        id: 'user_' + Date.now(),
+        name: name.trim(),
+        builtin: false,
+        files: sel.files,
+        include: sel.include
+    });
+    saveUserPresets(userPresets);
+    initPresets();
+    alert('预设已保存：' + name.trim());
+}
+
+function deleteSelectedPreset() {
+    const sel = document.getElementById('presetSelect');
+    const id = sel.value;
+    if (!id) {
+        alert('请先从列表中选择一个要删除的自定义预设');
+        return;
+    }
+    if (id.startsWith('__')) {
+        alert('内置预设不能删除');
+        return;
+    }
+    if (!confirm('确认删除此预设？')) return;
+
+    try {
+        const raw = localStorage.getItem('favicon_presets');
+        let userPresets = raw ? JSON.parse(raw) : [];
+        userPresets = userPresets.filter(p => p.id !== id);
+        saveUserPresets(userPresets);
+        initPresets();
+        alert('预设已删除');
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
 
 function initDownloadFilter() {
     if (typeof results === 'undefined' || !Array.isArray(results)) return;

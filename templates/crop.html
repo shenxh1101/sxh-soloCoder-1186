@@ -20,12 +20,24 @@
         <div class="crop-container">
             <div class="crop-left">
                 <div class="crop-info">
-                    <span>原图: {{ image_name }}</span>
-                    <span>{{ image_width }} × {{ image_height }}</span>
+                    <span>原图: <b id="currentImageName">{{ image_name }}</b></span>
+                    <span id="currentImageSize">{{ image_width }} × {{ image_height }}</span>
                     {% if image_count > 1 %}
-                    <span class="batch-hint">共 {{ image_count }} 张图片（只显示第一张预览）</span>
+                    <span class="batch-hint">批量模式：共 <b id="imageCountText">{{ image_count }}</b> 张，当前第 <b id="currentImageIndex">1</b> 张</span>
                     {% endif %}
                 </div>
+
+                {% if image_count > 1 %}
+                <div class="batch-crop-controls">
+                    <button class="btn-secondary" id="prevImageBtn" onclick="switchImage(-1)">← 上一张</button>
+                    <button class="btn-secondary apply-all-btn" id="applyFirstBtn" onclick="applyFirstToAll()" title="将第1张的裁剪参数（位置、缩放、尺寸）应用到所有图片">
+                        🎯 把第1张设置套用到全部
+                    </button>
+                    <button class="btn-secondary" id="nextImageBtn" onclick="switchImage(1)">下一张 →</button>
+                    <span id="imageProgress" style="margin-left:auto;font-size:12px;color:#64748b;">1 / {{ image_count }}</span>
+                </div>
+                <div class="batch-thumbnails" id="batchThumbnails"></div>
+                {% endif %}
                 
                 <div class="crop-canvas-wrapper">
                     <div class="crop-canvas" id="cropCanvas">

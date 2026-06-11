@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>批量对比 - Favicon生成器</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header compare-header">
+            <h1>🔍 批量任务对比</h1>
+            <p class="subtitle">并排查看多次生成的参数和结果</p>
+            <div class="header-actions">
+                <a href="{{ url_for('main.history') }}" class="btn-secondary">← 返回历史记录</a>
+                <a href="{{ url_for('main.index') }}" class="btn-secondary">↑ 去上传</a>
+            </div>
+        </header>
+
+        <div class="compare-container">
+            {% if records %}
+            <div class="compare-grid">
+                {% for rec in records %}
+                <div class="compare-card" data-id="{{ rec.id }}">
+                    <div class="card-title">{{ rec.original_name }}</div>
+                    <div class="card-sub">
+                        {{ rec.created_at }} · {{ rec.file_count }} 个文件
+                        {% if rec.cached %}
+                        <span class="history-badge cached" style="margin-left:6px;">来自缓存</span>
+                        {% else %}
+                        <span class="history-badge new" style="margin-left:6px;">新生成</span>
+                        {% endif %}
+                    </div>
+
+                    {% set opt = rec.options if rec.options is mapping else {} %}
+
+                    <div class="diff-section">
+                        <div class="diff-title">📁 生成的文件</div>
+                        <div class="file-list-mini">
+                            {% if rec.files_list %}
+                                {% for fn in rec.files_list %}
+                                <span class="file-chip">{{ fn }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span style="color:#94a3b8;font-size:11px;">（从详情加载）</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="diff-section">
+                        <div class="diff-title">🎨 应用与主题</div>
+                        <div class="mini-params">
+                            <div class="mp-item">
+                                <span class="mp-label">应用名</span>
+                                <span>{{ opt.get('app_name', '—') }}</span>
+                            </div>
+                            <div class="mp-item">
+                                <span class="mp-label">短名称</span>
+                                <span>{{ opt.get('app_short_name', '—') }}</span>
+                            </div>
+                            <div class="mp-item">
+                                <span class="mp-label">主题色</span>
+                                <span>
+                                    {% if opt.get('theme_color') %}
+                                    <span class="color-swatch" style="background:{{ opt.theme_color }}"></span>
+                                    <code>{{ opt.theme_color }}</code>
+                                    {% else %}—{% endif %}
+                                </span>
+                            </div>
+                            <div class="mp-item">
+                                <span class="mp-label">Manifest背景</span>
+                                <span>
+                                    {% if opt.get('background_color_manifest') %}
+                                    <span class="color-swatch" style="background:{{ opt.background_color_manifest }}"></span>
+                                    <code>{{ opt.background_color_manifest }}</code>
+                                    {% else %}—{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="diff-section">
+                        <div class="diff-title">✨ 美化参数</div>
+                        <div class="mini-params">
+                            <div class="mp-item">
+                                <span class="mp-label">圆角</span>
+                                <span>{{ opt.get('corner_radius', 0) }}px</span>
+                            </div>
+                            <div class="mp-item">
+                                <span class="mp-label">背景色</span>
+                                <span>
+                                    {% if opt.get('background_color') %}
+                                    <span class="color-swatch" style="background:{{ opt.background_color }}"></span>
+                                    <code>{{ opt.background_color }}</code>
+                                    {% else %}透明{% endif %}
+                                </span>
+                            </div>
+                            <div class="mp-item">
+                                <span class="mp-label">阴影</span>
+                                <span>{{ '✅ 启用' if opt.get('shadow') else '❌ 关闭' }}</span>
+                            </div>
+                            <div class="mp-item">
+                                <span class="mp-label">阴影模糊</span>
+                                <span>{{ opt.get('shadow_blur', 0) }}px</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="diff-section">
+                        <div class="diff-title">📐 尺寸与文件名</div>
+                        <div class="mini-params">
+                            <div class="mp-item" style="grid-column:span 2;">
+                                <span class="mp-label">标准尺寸</span>
+                                <span>favicon · apple-180 · android-192 · android-512 · mstile-150</span>
+                            </div>
+                            {% set cs = opt.get('custom_sizes', []) %}
+                            <div class="mp-item" style="grid-column:span 2;">
+                                <span class="mp-label">自定义尺寸</span>
+                                <span>{{ cs|length }} 项：
+                                    {% for s in cs %}{{ s[0] }}×{{ s[1] }}{% if not loop.last %}, {% endif %}{% endfor %}
+                                </span>
+                            </div>
+                            {% set cfn = opt.get('custom_filenames', {}) %}
+                            {% if cfn %}
+                            <div class="mp-item" style="grid-column:span 2;">
+                                <span class="mp-label">自定义文件名</span>
+                                <span>
+                                    <ul class="fn-list" style="margin-top:4px;">
+                                        {% for k, v in cfn.items() %}
+                                        <li><code>{{ k }}</code> → <code>{{ v }}</code></li>
+                                        {% endfor %}
+                                    </ul>
+                                </span>
+                            </div>
+                            {% endif %}
+                            {% set crop = opt.get('crop') %}
+                            {% if crop and crop.get('enabled') %}
+                            <div class="mp-item" style="grid-column:span 2;">
+                                <span class="mp-label">裁剪</span>
+                                <span>{{ crop.width }}×{{ crop.height }} @ ({{ crop.x }}, {{ crop.y }}) · scale={{ crop.scale }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="reuse-wrap">
+                        <button class="reuse-btn" onclick="reuseOne('{{ rec.id }}')" style="width:100%;justify-content:center;">
+                            ♻️ 套用此配置并上传
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">🤷</div>
+                <h3>没有可对比的任务</h3>
+                <p>请从历史记录中勾选至少 2 个任务进行对比</p>
+                <a href="{{ url_for('main.history') }}" class="btn-primary" style="display:inline-block;margin-top:20px;">去选择</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function reuseOne(recordId) {
+            if (!confirm('将使用此任务的所有参数进入上传页面，继续吗？')) return;
+            fetch('/api/reuse-template/' + recordId)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        sessionStorage.setItem('reuseTemplate', JSON.stringify(data.template));
+                        window.location.href = '/';
+                    } else {
+                        alert('获取参数失败: ' + (data.error || '未知错误'));
+                    }
+                })
+                .catch(e => alert('错误: ' + e.message));
+        }
+    </script>
+</body>
+</html>

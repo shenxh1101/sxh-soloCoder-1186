@@ -397,5 +397,83 @@
       }
     },
     "original_name": "test_icon.png"
+  },
+  "a7d13da221c05ba216d9b0b58c8492f87335cd179ae7d80117aebb9ca2f37ea9_166045a4db5fea5433bcfb3b1414c772": {
+    "files": {
+      "apple-touch-icon-180x180": {
+        "filename": "apple-touch-icon.png",
+        "type": "apple-touch-icon",
+        "size": [
+          180,
+          180
+        ],
+        "sizes": null
+      },
+      "android-chrome-192x192": {
+        "filename": "android-chrome-192x192.png",
+        "type": "android-chrome",
+        "size": [
+          192,
+          192
+        ],
+        "sizes": null
+      },
+      "android-chrome-512x512": {
+        "filename": "android-chrome-512x512.png",
+        "type": "android-chrome",
+        "size": [
+          512,
+          512
+        ],
+        "sizes": null
+      },
+      "mstile-150x150": {
+        "filename": "mstile-150x150.png",
+        "type": "mstile",
+        "size": [
+          150,
+          150
+        ],
+        "sizes": null
+      },
+      "favicon": {
+        "filename": "favicon.ico",
+        "type": "favicon",
+        "size": null,
+        "sizes": [
+          [
+            16,
+            16
+          ],
+          [
+            32,
+            32
+          ],
+          [
+            48,
+            48
+          ]
+        ]
+      },
+      "manifest": {
+        "filename": "manifest.json",
+        "type": "manifest",
+        "size": null,
+        "sizes": null
+      },
+      "browserconfig": {
+        "filename": "browserconfig.xml",
+        "type": "browserconfig",
+        "size": null,
+        "sizes": null
+      },
+      "html": {
+        "filename": "icons.html",
+        "type": "html",
+        "size": null,
+        "sizes": null
+      }
+    },
+    "original_name": "dl_test.png"
   }
 }

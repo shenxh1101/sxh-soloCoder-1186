@@ -18,9 +18,16 @@
 
         <div class="history-container">
             {% if records %}
+            <div class="compare-bar">
+                <label><input type="checkbox" id="toggleCompareMode" style="width:16px;height:16px;vertical-align:middle;accent-color:#667eea;margin-right:6px;"> 多选对比模式</label>
+                <span class="selected-count" id="selectedCount">已选 0 个</span>
+                <button class="btn btn-clear-compare" id="clearCompareBtn" style="display:none;" onclick="clearCompareSelection()">✕ 清空选择</button>
+                <a class="btn btn-compare" id="compareBtn" style="display:none;" href="javascript:startCompare()">🔍 对比所选</a>
+            </div>
             <div class="history-list">
                 {% for record in records %}
                 <div class="history-item" data-id="{{ record.id }}">
+                    <input type="checkbox" class="compare-check" style="display:none;" onchange="updateSelected()">
                     <div class="history-thumbnail">🖼️</div>
                     <div class="history-info">
                         <div class="history-name">{{ record.original_name }}</div>
@@ -136,6 +143,7 @@
                 if (options[key] === undefined) return;
                 let val = options[key];
                 let displayVal = val;
+                let displayClass = '';
                 
                 if (key === 'shadow') {
                     displayVal = val ? '✅ 是' : '❌ 否';
@@ -144,19 +152,41 @@
                 } else if (key === 'custom_sizes' && Array.isArray(val)) {
                     displayVal = val.map(s => Array.isArray(s) ? s[0]+'×'+(s[1]||s[0]) : s).join(', ') || '无';
                 } else if (key === 'custom_filenames') {
-                    displayVal = Object.keys(val).length + '项配置';
+                    const fnKeys = Object.keys(val);
+                    if (fnKeys.length === 0) {
+                        displayVal = '无';
+                    } else {
+                        displayClass = 'filenames-detail';
+                        displayVal = '<ul class="fn-list">';
+                        fnKeys.forEach(k => {
+                            displayVal += `<li><code>${k}</code> → <code>${val[k]}</code></li>`;
+                        });
+                        displayVal += '</ul>';
+                    }
                 } else if (key === 'crop' && val) {
+                    displayClass = 'crop-detail';
                     if (val.enabled) {
-                        displayVal = `启用: ${val.width}×${val.height} @(${val.x},${val.y})`;
+                        displayVal = `
+                            <div class="crop-grid">
+                                <div><b>启用：</b>✅ 是</div>
+                                <div><b>尺寸：</b>${val.width}×${val.height} px</div>
+                                <div><b>位置：</b>(${val.x}, ${val.y}) px</div>
+                                <div><b>缩放：</b>${val.scale}</div>
+                                <div><b>模式：</b>${val.mode || 'cover'}</div>
+                            </div>
+                        `;
                     } else {
                         displayVal = '未启用';
                     }
                 } else if (val === null || val === '') {
                     displayVal = '—';
+                } else if (typeof val === 'string' && val.startsWith('#')) {
+                    displayClass = 'color-val';
+                    displayVal = `<span class="color-swatch" style="background:${val}"></span> <code>${val}</code>`;
                 }
 
                 html += `
-                    <div class="param-item">
+                    <div class="param-item ${displayClass}">
                         <span class="param-label">${labels[key]}</span>
                         <span class="param-value">${displayVal}</span>
                     </div>
@@ -215,6 +245,47 @@
             .catch(error => {
                 alert('删除失败: ' + error.message);
             });
+        }
+
+        const compareModeToggle = document.getElementById('toggleCompareMode');
+        const compareChecks = document.querySelectorAll('.compare-check');
+        const selectedCountEl = document.getElementById('selectedCount');
+        const clearCompareBtn = document.getElementById('clearCompareBtn');
+        const compareBtn = document.getElementById('compareBtn');
+
+        compareModeToggle.addEventListener('change', function () {
+            const isOn = this.checked;
+            compareChecks.forEach(cb => {
+                cb.style.display = isOn ? 'inline-block' : 'none';
+                if (!isOn) cb.checked = false;
+            });
+            updateSelected();
+        });
+
+        function updateSelected() {
+            const count = document.querySelectorAll('.compare-check:checked').length;
+            selectedCountEl.textContent = `已选 ${count} 个`;
+            const isMode = compareModeToggle.checked;
+            clearCompareBtn.style.display = (isMode && count > 0) ? 'inline-flex' : 'none';
+            compareBtn.style.display = (isMode && count >= 2) ? 'inline-flex' : 'none';
+            compareBtn.classList.toggle('disabled', count < 2);
+            compareBtn.style.opacity = count < 2 ? '0.5' : '1';
+            compareBtn.style.pointerEvents = count < 2 ? 'none' : 'auto';
+        }
+
+        function clearCompareSelection() {
+            compareChecks.forEach(cb => cb.checked = false);
+            updateSelected();
+        }
+
+        function startCompare() {
+            const ids = Array.from(document.querySelectorAll('.compare-check:checked'))
+                .map(cb => cb.closest('.history-item').dataset.id);
+            if (ids.length < 2) {
+                alert('请至少选择 2 个任务进行对比');
+                return;
+            }
+            window.location.href = '/compare?ids=' + encodeURIComponent(ids.join(','));
         }
     </script>
 </body>

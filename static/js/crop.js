@@ -32,11 +32,163 @@ document.addEventListener('DOMContentLoaded', function() {
     
     let imageDisplayW = 0;
     let imageDisplayH = 0;
+
+    let currentImageIndex = 0;
+    let totalImages = 1;
+    let perImageCrops = [];
+    let imageList = [];
+    let batchMode = false;
     
     function init() {
         updateScaleDisplay();
         bindEvents();
+        initBatchMode();
         initCropFrame();
+    }
+
+    function initBatchMode() {
+        const countEl = document.getElementById('imageCountText');
+        if (!countEl) {
+            batchMode = false;
+            totalImages = 1;
+            return;
+        }
+        batchMode = true;
+        totalImages = parseInt(countEl.textContent, 10) || 1;
+        fetch(`/api/upload-info/${uploadId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.images) {
+                    imageList = data.images;
+                    renderThumbnails();
+                }
+            })
+            .catch(() => {});
+    }
+
+    function renderThumbnails() {
+        const box = document.getElementById('batchThumbnails');
+        if (!box) return;
+        box.innerHTML = '';
+        imageList.forEach((img, idx) => {
+            const t = document.createElement('div');
+            t.className = 'thumb' + (idx === currentImageIndex ? ' active' : '');
+            t.innerHTML = `
+                <img src="/api/original-image/${uploadId}?index=${idx}" alt="${img.name}">
+                <span class="idx">${idx + 1}</span>
+            `;
+            t.title = img.name;
+            t.addEventListener('click', () => switchToImage(idx));
+            box.appendChild(t);
+        });
+    }
+
+    function saveCurrentCrop() {
+        const p = getCropParams();
+        perImageCrops[currentImageIndex] = {
+            enabled: true,
+            x: p.x,
+            y: p.y,
+            width: p.width,
+            height: p.height,
+            scale: p.scale,
+            mode: p.mode,
+            userZoom: userZoom,
+            cropMode: cropMode
+        };
+    }
+
+    function loadCropForIndex(idx) {
+        const saved = perImageCrops[idx];
+        const img = imageList[idx];
+        if (img) {
+            imageWidth = img.width;
+            imageHeight = img.height;
+            document.getElementById('currentImageName').textContent = img.name;
+            document.getElementById('currentImageSize').textContent = `${img.width} × ${img.height}`;
+        }
+        originalImage.src = `/api/original-image/${uploadId}?index=${idx}`;
+        originalImage.onload = () => {
+            if (saved) {
+                userZoom = saved.userZoom || 1.0;
+                cropMode = saved.cropMode || 'cover';
+                scaleSlider.value = userZoom;
+                updateScaleDisplay();
+                document.querySelectorAll('.mode-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.mode === cropMode);
+                });
+            } else {
+                userZoom = 1.0;
+                cropMode = 'cover';
+                scaleSlider.value = 1;
+                updateScaleDisplay();
+            }
+            initCropFrame();
+            if (saved) {
+                const totalScale = (function(){
+                    const imgRect = originalImage.getBoundingClientRect();
+                    return (imgRect.width / imageWidth) * userZoom;
+                })();
+                cropFrame.style.left = (saved.x * totalScale) + 'px';
+                cropFrame.style.top = (saved.y * totalScale) + 'px';
+                cropFrame.style.width = (saved.width * totalScale) + 'px';
+                cropFrame.style.height = (saved.height * totalScale) + 'px';
+                updateInputsFromFrame();
+            }
+            updatePreview();
+        };
+    }
+
+    function switchImage(delta) {
+        const next = currentImageIndex + delta;
+        if (next < 0 || next >= totalImages) return;
+        switchToImage(next);
+    }
+
+    function switchToImage(idx) {
+        if (idx === currentImageIndex) return;
+        saveCurrentCrop();
+        currentImageIndex = idx;
+        document.getElementById('currentImageIndex').textContent = String(idx + 1);
+        document.getElementById('imageProgress').textContent = `${idx + 1} / ${totalImages}`;
+        document.querySelectorAll('.batch-thumbnails .thumb').forEach((el, i) => {
+            el.classList.toggle('active', i === idx);
+        });
+        loadCropForIndex(idx);
+    }
+
+    function applyFirstToAll() {
+        if (totalImages < 2) return;
+        if (!confirm('将把第 1 张图的裁剪位置、缩放和尺寸套用到所有 ' + totalImages + ' 张图，继续吗？')) return;
+        saveCurrentCrop();
+        const first = perImageCrops[0] || (function(){
+            const p = getCropParams();
+            return {
+                enabled: true, x: p.x, y: p.y, width: p.width, height: p.height,
+                scale: p.scale, mode: p.mode, userZoom: userZoom, cropMode: cropMode
+            };
+        })();
+        for (let i = 1; i < totalImages; i++) {
+            perImageCrops[i] = Object.assign({}, first);
+        }
+        alert('已套用到全部 ' + totalImages + ' 张图！');
+    }
+
+    function getAllCrops() {
+        saveCurrentCrop();
+        const arr = [];
+        for (let i = 0; i < totalImages; i++) {
+            if (perImageCrops[i]) {
+                arr.push(perImageCrops[i]);
+            } else {
+                const p = getCropParams();
+                arr.push({
+                    enabled: true, x: p.x, y: p.y, width: p.width, height: p.height,
+                    scale: 1.0, mode: cropMode
+                });
+            }
+        }
+        return arr;
     }
     
     function computeDisplayScale() {
@@ -369,7 +521,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updatePreview() {
         const params = getCropParams();
         
-        const previewUrl = `/api/crop-image/${uploadId}?x=${params.x}&y=${params.y}&width=${params.width}&height=${params.height}&scale=1.0&mode=${params.mode}&preview_size=256`;
+        const previewUrl = `/api/crop-image/${uploadId}?index=${currentImageIndex}&x=${params.x}&y=${params.y}&width=${params.width}&height=${params.height}&scale=1.0&mode=${params.mode}&preview_size=256`;
         
         previewSquare.src = previewUrl;
         preview16.src = previewUrl;
@@ -379,17 +531,29 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function applyCropAndGenerate() {
-        const params = getCropParams();
-        
         const formData = new FormData();
         formData.append('upload_id', uploadId);
-        formData.append('crop_enabled', 'true');
-        formData.append('crop_x', params.x);
-        formData.append('crop_y', params.y);
-        formData.append('crop_width', params.width);
-        formData.append('crop_height', params.height);
-        formData.append('crop_scale', '1.0');
-        formData.append('crop_mode', params.mode);
+        
+        if (batchMode && totalImages > 1) {
+            formData.append('crops', JSON.stringify(getAllCrops()));
+            formData.append('crop_enabled', 'true');
+            const anyCrop = perImageCrops[0] || getCropParams();
+            formData.append('crop_x', anyCrop.x);
+            formData.append('crop_y', anyCrop.y);
+            formData.append('crop_width', anyCrop.width);
+            formData.append('crop_height', anyCrop.height);
+            formData.append('crop_scale', '1.0');
+            formData.append('crop_mode', anyCrop.mode || cropMode);
+        } else {
+            const params = getCropParams();
+            formData.append('crop_enabled', 'true');
+            formData.append('crop_x', params.x);
+            formData.append('crop_y', params.y);
+            formData.append('crop_width', params.width);
+            formData.append('crop_height', params.height);
+            formData.append('crop_scale', '1.0');
+            formData.append('crop_mode', params.mode);
+        }
         
         const url = `/generate`;
         
@@ -417,6 +581,13 @@ document.addEventListener('DOMContentLoaded', function() {
     function skipAndGenerate() {
         const formData = new FormData();
         formData.append('upload_id', uploadId);
+        if (batchMode && totalImages > 1) {
+            const crops = [];
+            for (let i = 0; i < totalImages; i++) {
+                crops.push({ enabled: false, x: 0, y: 0, width: 0, height: 0, scale: 1.0, mode: 'cover' });
+            }
+            formData.append('crops', JSON.stringify(crops));
+        }
         
         showLoading('正在生成图标...');
         
